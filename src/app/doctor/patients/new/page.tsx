@@ -42,26 +42,34 @@ export default function AddNewPatientPage() {
       console.error('[AddNewPatientPage] Unauthorized: doctorUserProfile missing or not a doctor.', doctorUserProfile);
       return;
     }
-    setIsLoading(true);
+    
+    if (!firstName.trim() || !lastName.trim() || !idNumber.trim()) {
+        toast({ title: 'Missing Required Fields', description: 'First Name, Last Name, and Patient ID are required.', variant: 'destructive' });
+        setIsLoading(false);
+        return;
+    }
 
-    if (!firstName.trim() || !lastName.trim() || !idNumber.trim() || !initialPassword.trim()) {
-        toast({ title: 'Missing Required Fields', description: 'First Name, Last Name, Patient ID, and Initial Password are required.', variant: 'destructive' });
+    if (initialPassword.trim().length < 6) {
+        toast({ 
+            title: 'Invalid Password', 
+            description: 'Initial Password must be at least 6 characters long.', 
+            variant: 'destructive' 
+        });
         setIsLoading(false);
         return;
     }
     
-    // SECURITY WARNING: Storing initial passwords directly is not recommended for production login.
-    // This should be a temporary password for a first-time setup or an invitation system.
-    // True patient login should use Firebase Authentication with patient-chosen passwords.
-    console.warn("[AddNewPatientPage] SECURITY WARNING: Storing an 'initialPassword'. This should ideally be temporary and part of a secure patient onboarding flow, not for direct, long-term login.");
+    setIsLoading(true);
+    
+    console.warn("[AddNewPatientPage] SECURITY NOTE: Storing an 'initialPassword'. This should ideally be temporary and part of a secure patient onboarding flow (e.g., force change on first login), not for direct, long-term login if patients use this record directly to authenticate.");
 
     const patientDataToSave: Omit<PatientRecord, 'recordId' | 'linkedAuthUid'> = {
-      doctorId: doctorUserProfile.uid,
+      doctorId: doctorUserProfile.uid, 
       firstName: firstName.trim(),
       lastName: lastName.trim(),
-      idNumber: idNumber.trim(),
-      initialPassword: initialPassword.trim(), // Storing the initial password
-      //createdAt: serverTimestamp(),
+      idNumber: idNumber.trim(), 
+      initialPassword: initialPassword.trim(), 
+      createdAt: serverTimestamp(),
     };
 
     if (email.trim()) patientDataToSave.email = email.trim();
@@ -116,7 +124,7 @@ export default function AddNewPatientPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><UserPlus className="h-6 w-6 text-primary"/>Patient Information</CardTitle>
             <CardDescription>
-              Fields marked with * are required.
+              Fields marked with * are required. Initial Password must be at least 6 characters.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -137,8 +145,17 @@ export default function AddNewPatientPage() {
                     <Input id="idNumber" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} required disabled={isLoading} placeholder="e.g., P001 (created by doctor)"/>
                 </div>
                  <div className="space-y-2">
-                    <Label htmlFor="initialPassword">Initial Password *</Label>
-                    <Input id="initialPassword" type="password" value={initialPassword} onChange={(e) => setInitialPassword(e.target.value)} required disabled={isLoading} placeholder="Set an initial password"/>
+                    <Label htmlFor="initialPassword">Initial Password * (min 6 chars)</Label>
+                    <Input 
+                        id="initialPassword" 
+                        type="password" 
+                        value={initialPassword} 
+                        onChange={(e) => setInitialPassword(e.target.value)} 
+                        required 
+                        minLength={6}
+                        disabled={isLoading} 
+                        placeholder="Set an initial password"
+                    />
                 </div>
             </div>
              <div className="space-y-2">
