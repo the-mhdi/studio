@@ -38,7 +38,7 @@ export interface PatientRecord {
   address?: string;
   phoneNumber?: string;
   patientSpecificPrompts?: string;
-  createdAt: any; // Firestore serverTimestamp
+  //createdAt: any; // Firestore serverTimestamp
   linkedAuthUid?: string; // UID of the patient's Firebase Auth account if linked to this record
 }
 
