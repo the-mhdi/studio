@@ -47,12 +47,7 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'medimind-auth-storage-v2',
       storage: createJSONStorage(() => localStorage),
-      // Only persist a subset of the state if needed, or handle hydration carefully
-      // For example, authUser (FirebaseUser object) might not be ideal to persist directly due to its methods and potential size.
-      // It's often better to re-establish authUser on app load via onAuthStateChanged.
-      // For this iteration, we'll persist it but this is a point of refinement.
       partialize: (state) => ({
-        // Persist only userProfile and isAuthenticated, authUser will be rehydrated by onAuthStateChanged
         userProfile: state.userProfile,
         isAuthenticated: state.isAuthenticated,
       }),
@@ -86,14 +81,15 @@ export function initializeAuthListener() {
         console.error("User profile not found in Firestore for UID:", firebaseUser.uid);
         await firebaseSignOut(auth); // Log out if profile is missing
         useAuthStore.getState().setAuthUser(null);
-        useAuthSt<ctrl62>     <p className="text-sm text-muted-foreground">
-            Already have an account?{' '}
-            <Link href="/auth/login" className="font-medium text-primary hover:underline">
-              Login
-            </Link>
-          </p>
-        </CardFooter>
-      </form>
-    </Card>
-  );
+        useAuthStore.getState().setUserProfile(null);
+        useAuthStore.getState().setIsLoading(false);
+      }
+    } else {
+      // User is signed out
+      useAuthStore.getState().setAuthUser(null);
+      useAuthStore.getState().setUserProfile(null);
+      useAuthStore.getState().setIsLoading(false);
+    }
+  });
+  return unsubscribeAuth;
 }
