@@ -7,37 +7,66 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { PlusCircle, Search, Edit3, FileText, Users } from 'lucide-react';
+import { PlusCircle, Search, Edit3, FileText, Users, AlertTriangle, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/lib/authStore';
-import type { Patient } from '@/lib/types';
+import type { PatientRecord } from '@/lib/types'; // Changed from Patient
 import { DashboardHeader } from '@/components/shared/dashboard-header';
 import { Badge } from '@/components/ui/badge';
-
-// Mock patient data
-const MOCK_PATIENTS: Patient[] = [
-  { user_id: 1, username: 'alice_p', email: 'alice.p@example.com', first_name: 'Alice', last_name: 'Smith', user_type: 'patient', created_at: '2023-01-15T10:00:00Z', id_number: 'P001', date_of_birth: '1990-05-20', address: '123 Health St, Wellness City', phone_number: '555-0101' },
-  { user_id: 2, username: 'bob_k', email: 'bob.k@example.com', first_name: 'Bob', last_name: 'Johnson', user_type: 'patient', created_at: '2023-02-20T11:30:00Z', id_number: 'P002', date_of_birth: '1985-11-12', address: '456 Care Ave, Remedy Town', phone_number: '555-0102' },
-  { user_id: 3, username: 'carol_w', email: 'carol.w@example.com', first_name: 'Carol', last_name: 'Williams', user_type: 'patient', created_at: '2023-03-10T09:15:00Z', id_number: 'P003', date_of_birth: '1995-08-03', address: '789 Life Rd, Vitality Village', phone_number: '555-0103' },
-  { user_id: 4, username: 'david_b', email: 'david.b@example.com', first_name: 'David', last_name: 'Brown', user_type: 'patient', created_at: '2023-04-05T14:00:00Z', id_number: 'P004', date_of_birth: '1978-02-25', address: '101 Healthway, Cureburg', phone_number: '555-0104' },
-];
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { format } from 'date-fns';
 
 export default function DoctorPatientsPage() {
-  const { user } = useAuthStore(); // Assuming doctor is logged in
-  const [patients, setPatients] = useState<Patient[]>([]);
+  const { userProfile: doctorUserProfile } = useAuthStore();
+  const [patientRecords, setPatientRecords] = useState<PatientRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // In a real app, fetch patients for this doctor
-    if (user) {
-      // MOCK: Simulating fetching patients associated with this doctor
-      setPatients(MOCK_PATIENTS);
-    }
-  }, [user]);
+    const fetchPatientRecords = async () => {
+      if (doctorUserProfile && doctorUserProfile.userType === 'doctor') {
+        setIsLoading(true);
+        setError(null);
+        try {
+          console.log(`Fetching patient records for doctor ID: ${doctorUserProfile.uid}`);
+          const patientRecordsRef = collection(db, "patientRecords");
+          const q = query(patientRecordsRef, where("doctorId", "==", doctorUserProfile.uid));
+          const querySnapshot = await getDocs(q);
+          
+          const records: PatientRecord[] = [];
+          querySnapshot.forEach((doc) => {
+            const data = doc.data() as Omit<PatientRecord, 'recordId'>; // Data from Firestore
+            records.push({ 
+              recordId: doc.id, 
+              ...data,
+              // Ensure createdAt is correctly handled if it's a Firestore Timestamp
+              createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
+            });
+          });
+          console.log(`Fetched ${records.length} patient records:`, records);
+          setPatientRecords(records);
+        } catch (err: any) {
+          console.error("Error fetching patient records:", err);
+          setError(err.message || "Failed to fetch patient records. Please check console.");
+        } finally {
+          setIsLoading(false);
+        }
+      } else {
+        setIsLoading(false);
+        if (!doctorUserProfile) {
+          setError("Doctor profile not loaded. Cannot fetch patients.");
+        }
+      }
+    };
 
-  const filteredPatients = patients.filter(patient =>
-    `${patient.first_name} ${patient.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    patient.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    patient.id_number.toLowerCase().includes(searchTerm.toLowerCase())
+    fetchPatientRecords();
+  }, [doctorUserProfile]);
+
+  const filteredPatients = patientRecords.filter(record =>
+    `${record.firstName} ${record.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (record.email && record.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    record.idNumber.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -71,11 +100,23 @@ export default function DoctorPatientsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {filteredPatients.length === 0 ? (
+          {isLoading ? (
+            <div className="flex justify-center items-center py-10">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="ml-2 text-muted-foreground">Loading patient records...</p>
+            </div>
+          ) : error ? (
+            <div className="text-center py-10 text-destructive">
+              <AlertTriangle size={48} className="mx-auto mb-4" />
+              <p>Error: {error}</p>
+            </div>
+          ) : filteredPatients.length === 0 ? (
             <div className="text-center py-10">
               <Users size={48} className="mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No patients found matching your criteria.</p>
-              {patients.length > 0 && searchTerm && (
+              <p className="text-muted-foreground">
+                {patientRecords.length === 0 ? "No patient records found for you." : "No patients found matching your search criteria."}
+              </p>
+              {patientRecords.length > 0 && searchTerm && (
                 <Button variant="link" onClick={() => setSearchTerm('')}>Clear search</Button>
               )}
             </div>
@@ -93,21 +134,21 @@ export default function DoctorPatientsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredPatients.map((patient) => (
-                    <TableRow key={patient.user_id} className="hover:bg-muted/50">
-                      <TableCell className="font-medium">{patient.first_name} {patient.last_name}</TableCell>
-                      <TableCell>{patient.id_number}</TableCell>
-                      <TableCell>{patient.email}</TableCell>
-                      <TableCell>{patient.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString() : 'N/A'}</TableCell>
+                  {filteredPatients.map((record) => (
+                    <TableRow key={record.recordId} className="hover:bg-muted/50">
+                      <TableCell className="font-medium">{record.firstName} {record.lastName}</TableCell>
+                      <TableCell>{record.idNumber}</TableCell>
+                      <TableCell>{record.email || 'N/A'}</TableCell>
+                      <TableCell>{record.dateOfBirth ? format(new Date(record.dateOfBirth), 'MM/dd/yyyy') : 'N/A'}</TableCell>
                       <TableCell><Badge variant="secondary">Active</Badge></TableCell>
                       <TableCell className="text-right">
                         <Button variant="ghost" size="sm" asChild className="mr-2">
-                          <Link href={`/doctor/patients/${patient.user_id}`}>
+                          <Link href={`/doctor/patients/${record.recordId}`}>
                             <Edit3 className="h-4 w-4 mr-1" /> View/Edit
                           </Link>
                         </Button>
                         <Button variant="outline" size="sm" asChild>
-                          <Link href={`/doctor/patients/${patient.user_id}?tab=documents`}>
+                          <Link href={`/doctor/patients/${record.recordId}?tab=documents`}>
                             <FileText className="h-4 w-4 mr-1" /> Docs
                           </Link>
                         </Button>
@@ -119,9 +160,9 @@ export default function DoctorPatientsPage() {
             </div>
           )}
         </CardContent>
-         {filteredPatients.length > 0 && (
+         {filteredPatients.length > 0 && !isLoading && !error && (
             <CardDescription className="p-6 pt-0 text-sm text-muted-foreground">
-                Showing {filteredPatients.length} of {patients.length} total patients.
+                Showing {filteredPatients.length} of {patientRecords.length} total patients.
             </CardDescription>
          )}
       </Card>
