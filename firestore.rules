@@ -11,46 +11,46 @@ service cloud.firestore {
     return request.auth != null;
   }
 
+  // Function to check if the current user is a doctor
+  // It relies on the /users/{userId} collection being readable for the request.auth.uid
   function isDoctor() {
-    // Ensure the user document can be read by the user themselves for this function to work
-    // Also, check if request.auth is not null before trying to access request.auth.uid
     if (!isAuthenticated()) {
       return false;
     }
-    let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    return userData != null && userData.userType == 'doctor';
+    let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+    return userDoc.data.userType == 'doctor';
   }
 
+  // Function to check if the current user is a patient
   function isPatient() {
     if (!isAuthenticated()) {
       return false;
     }
-    let userData = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    return userData != null && userData.userType == 'patient';
+    let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+    return userDoc.data.userType == 'patient';
   }
 
+  // Check if the authenticated doctor is the one managing the specified patient record
   function isDoctorManagingPatient(patientRecordId) {
-    if (!isDoctor() || !(patientRecordId is string && patientRecordId.size() > 0)) {
+    if (!isDoctor() || !(patientRecordId is string && patientRecordId.size() > 0) ) {
       return false;
     }
-    let patientRecord = get(/databases/$(database)/documents/patientRecords/ + patientRecordId).data;
-    return patientRecord != null &&
-           patientRecord.doctorId == request.auth.uid;
+    let patientRecord = get(/databases/$(database)/documents/patientRecords/$(patientRecordId));
+    return patientRecord.data.doctorId == request.auth.uid;
   }
 
+  // Check if the authenticated patient is linked to the specified patient record
   function isLinkedPatient(patientRecordId) {
-    if (!isPatient() || !(patientRecordId is string && patientRecordId.size() > 0)) {
+    if (!isPatient() || !(patientRecordId is string && patientRecordId.size() > 0) ) {
       return false;
     }
-    let patientRecord = get(/databases/$(database)/documents/patientRecords/ + patientRecordId).data;
-    return patientRecord != null &&
-           patientRecord.linkedAuthUid == request.auth.uid;
+    let patientRecord = get(/databases/$(database)/documents/patientRecords/$(patientRecordId));
+    return patientRecord.data.linkedAuthUid == request.auth.uid;
   }
 
   // ==================================
   // == Collection Rules ==
   // ==================================
-
   match /databases/{database}/documents {
 
     // == Users Collection ==
@@ -62,49 +62,44 @@ service cloud.firestore {
                       request.resource.data.firstName is string && request.resource.data.firstName.size() > 0 &&
                       request.resource.data.lastName is string && request.resource.data.lastName.size() > 0 &&
                       request.resource.data.userType is string && (request.resource.data.userType == 'doctor' || request.resource.data.userType == 'patient') &&
-                      request.resource.data.createdAt == request.time;
+                      request.resource.data.createdAt == request.time; // For create, client sends serverTimestamp() which is fine.
 
-      // Explicitly allow user to read their own document, and doctors to read any.
-      allow read: if isAuthenticated() && 
-                    (request.auth.uid == userId || 
-                     (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userType == 'doctor')
-                    );
+      // Allow any authenticated user to read any user document for now.
+      // This ensures helper functions like isDoctor() can read the user's own profile.
+      allow read: if isAuthenticated();
 
       allow update: if isAuthenticated() &&
                       request.auth.uid == userId &&
-                      request.resource.data.uid == resource.data.uid && 
-                      request.resource.data.email == resource.data.email && 
-                      request.resource.data.userType == resource.data.userType && 
-                      request.resource.data.createdAt == resource.data.createdAt; 
-      
-      allow delete: if false; 
+                      // Prevent changing critical fields
+                      request.resource.data.uid == resource.data.uid &&
+                      request.resource.data.email == resource.data.email &&
+                      request.resource.data.userType == resource.data.userType &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if false; // Generally, users should not delete their own accounts directly via client.
     }
 
     // == PatientRecords Collection ==
     match /patientRecords/{recordId} {
-      // DEBUG: Temporarily simplified create rule
-      allow create: if isAuthenticated() && 
-                      isDoctor() && // isDoctor() implicitly checks isAuthenticated() again
-                      request.resource.data.doctorId == request.auth.uid; 
-                      // If this still fails, isDoctor() is the primary suspect,
-                      // or the doctorId being sent isn't matching request.auth.uid.
-
-      // Original more specific create rule (for reference when we reinstate it)
-      // allow create: if isDoctor() &&
-      //                 request.resource.data.doctorId == request.auth.uid &&
-      //                 request.resource.data.firstName is string && request.resource.data.firstName.size() > 0 &&
-      //                 request.resource.data.lastName is string && request.resource.data.lastName.size() > 0 &&
-      //                 request.resource.data.idNumber is string && request.resource.data.idNumber.size() > 0 &&
-      //                 request.resource.data.initialPassword is string && request.resource.data.initialPassword.size() >= 6 &&
-      //                 !('linkedAuthUid' in request.resource.data);
-
+      // Doctor creates a patient record, their UID must be doctorId
+      allow create: if isAuthenticated() &&
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.userType == 'doctor' && // Direct check
+                      request.resource.data.doctorId == request.auth.uid &&
+                      request.resource.data.firstName is string && request.resource.data.firstName.size() > 0 &&
+                      request.resource.data.lastName is string && request.resource.data.lastName.size() > 0 &&
+                      request.resource.data.idNumber is string && request.resource.data.idNumber.size() > 0 &&
+                      request.resource.data.initialPassword is string && request.resource.data.initialPassword.size() >= 6 &&
+                      // No 'createdAt == request.time' check, as client sends serverTimestamp()
+                      !('linkedAuthUid' in request.resource.data); // Cannot set linkedAuthUid on create
 
       allow read: if isAuthenticated() &&
-                    (isDoctorManagingPatient(recordId) || isLinkedPatient(recordId));
+                    ( isDoctorManagingPatient(recordId) || isLinkedPatient(recordId) );
 
       allow update: if isDoctorManagingPatient(recordId) &&
-                      request.resource.data.doctorId == resource.data.doctorId && 
-                      request.resource.data.createdAt == resource.data.createdAt; 
+                      // Prevent changing doctorId and createdAt
+                      request.resource.data.doctorId == resource.data.doctorId &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+                      // Other fields like firstName, lastName, linkedAuthUid can be updated by the managing doctor.
 
       allow delete: if isDoctorManagingPatient(recordId);
     }
@@ -118,16 +113,18 @@ service cloud.firestore {
     match /appointments/{appointmentId} {
       allow create: if isAuthenticated() &&
                       ( (isPatient() && request.resource.data.patientAuthUid == request.auth.uid) ||
-                        (isDoctor() /* && doctorCanAccessPatient(request.resource.data.patientAuthUid) */ )
-                      );
+                        (isDoctor() && request.resource.data.doctorId == request.auth.uid) ); // Doctor can create for themselves or patients
+                      // Further validation: if doctor creates for a patient, ensure patientAuthUid is valid & linked.
 
       allow read: if isAuthenticated() &&
                     ( (isPatient() && resource.data.patientAuthUid == request.auth.uid) ||
-                      (isDoctor() && resource.data.doctorId == request.auth.uid) );
+                      (isDoctor() && resource.data.doctorId == request.auth.uid) || // Doctor can read their appointments
+                      (isDoctor() && get(/databases/$(database)/documents/patientRecords/$(resource.data.patientRecordId)).data.doctorId == request.auth.uid) // Doctor can read appointments of their patients if linked via patientRecordId
+                    );
 
       allow update, delete: if isAuthenticated() &&
                               ( (isPatient() && resource.data.patientAuthUid == request.auth.uid) ||
-                                (isDoctor() && resource.data.doctorId == request.auth.uid) );
+                                (isDoctor() && resource.data.doctorId == request.auth.uid) ); // Simplified for now
     }
 
     // == Diagnoses Collection ==
@@ -136,8 +133,8 @@ service cloud.firestore {
                       request.resource.data.diagnosedBy == request.auth.uid;
 
       allow read: if isAuthenticated() &&
-                    (isDoctorManagingPatient(resource.data.patientRecordId) ||
-                     isLinkedPatient(resource.data.patientRecordId));
+                    ( isDoctorManagingPatient(resource.data.patientRecordId) ||
+                      isLinkedPatient(resource.data.patientRecordId) );
 
       allow update, delete: if isDoctorManagingPatient(resource.data.patientRecordId) &&
                               resource.data.diagnosedBy == request.auth.uid;
@@ -149,8 +146,8 @@ service cloud.firestore {
                       request.resource.data.uploadedBy == request.auth.uid;
 
       allow read: if isAuthenticated() &&
-                    (isDoctorManagingPatient(resource.data.patientRecordId) ||
-                     isLinkedPatient(resource.data.patientRecordId));
+                    ( isDoctorManagingPatient(resource.data.patientRecordId) ||
+                      isLinkedPatient(resource.data.patientRecordId) );
 
       allow delete: if isDoctorManagingPatient(resource.data.patientRecordId) &&
                       resource.data.uploadedBy == request.auth.uid;
@@ -158,17 +155,22 @@ service cloud.firestore {
 
     // == ChatMessages Collection ==
     match /chatMessages/{chatId} {
+      // Patients can create their own messages
       allow create: if isAuthenticated() &&
                       isPatient() &&
                       request.resource.data.patientAuthUid == request.auth.uid &&
                       request.resource.data.senderId == request.auth.uid &&
                       request.resource.data.isUser == true;
+      // AI writes would need to be done via a backend function with admin privileges
 
+      // Patients can read their own messages.
+      // Doctors reading patient chats needs a robust linking mechanism and potentially backend assistance
+      // or a more complex rule if chat messages also store a direct link to a 'patientRecordId' that doctors manage.
       allow read: if isAuthenticated() &&
-                    isPatient() && 
+                    isPatient() &&
                     resource.data.patientAuthUid == request.auth.uid;
 
-      allow update, delete: if false; 
+      allow update, delete: if false; // Chat messages are typically immutable
     }
 
     // == PillReminders Collection ==
@@ -176,8 +178,12 @@ service cloud.firestore {
       allow create: if isPatient() &&
                       request.resource.data.patientAuthUid == request.auth.uid;
 
-      allow read, update, delete: if isPatient() &&
-                                   resource.data.patientAuthUid == request.auth.uid;
+      allow read, delete: if isPatient() &&
+                            resource.data.patientAuthUid == request.auth.uid;
+
+      allow update: if isPatient() &&
+                      resource.data.patientAuthUid == request.auth.uid &&
+                      request.resource.data.patientAuthUid == resource.data.patientAuthUid; // Ensure patientAuthUid isn't changed
     }
   }
 }
