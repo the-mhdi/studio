@@ -26,7 +26,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!authIsLoading && isAuthenticated && userProfile) {
-      console.log('[LoginPage] useEffect: Authenticated, redirecting. Profile:', userProfile);
+      console.log('[LoginPage] useEffect: Authenticated, redirecting. Profile UID:', userProfile.uid, 'Type:', userProfile.userType);
       if (userProfile.userType === 'doctor') {
         router.push('/doctor/dashboard');
       } else {
@@ -42,30 +42,33 @@ export default function LoginPage() {
     console.log('[LoginPage] handleSubmit: Attempting login with identifier:', identifier);
 
     // Attempt Patient ID login first
-    // For this example, let's assume Patient IDs might have a common prefix or structure, or we just try it.
-    // A more robust way would be to clearly distinguish or have separate fields.
     try {
-      console.log('[LoginPage] Attempting Patient ID login for:', identifier);
+      console.log('[LoginPage] Attempting Patient ID login for identifier:', identifier, 'and password:', password ? '******' : '(empty)');
       const patientRecordsRef = collection(db, "patientRecords");
       const q = query(patientRecordsRef, where("idNumber", "==", identifier));
+      console.log('[LoginPage] Patient ID login Firestore query created for idNumber:', identifier);
       const querySnapshot = await getDocs(q);
+      console.log('[LoginPage] Patient ID login query executed. Found documents:', querySnapshot.size);
 
       if (!querySnapshot.empty) {
-        let patientRecordFound = false;
+        let patientRecordFoundAndMatched = false;
         for (const docSnap of querySnapshot.docs) {
           const record = docSnap.data() as PatientRecord;
+          console.log('[LoginPage] Checking patient record:', docSnap.id, 'Data:', record);
           if (record.initialPassword === password) {
-            console.log('[LoginPage] Patient ID and initialPassword match for record:', record);
-            patientRecordFound = true;
+            console.log('[LoginPage] Patient ID and initialPassword match for record:', docSnap.id);
+            patientRecordFoundAndMatched = true;
+            
             const patientUserProfile: User = {
-              uid: `patientrecord_${docSnap.id}`, // Create a unique-ish ID for this session
-              email: record.email || null,
+              uid: `patientrecord_${docSnap.id}`, // Create a unique ID for this session
+              email: record.email || null, // Use record's email if available
               firstName: record.firstName,
               lastName: record.lastName,
               userType: 'patient',
-              createdAt: record.createdAt || new Date().toISOString(), // Fallback
+              createdAt: record.createdAt instanceof Timestamp ? record.createdAt.toDate().toISOString() : record.createdAt || new Date().toISOString(), // Fallback for createdAt
               patientRecordIdForAuth: docSnap.id,
             };
+            console.log('[LoginPage] Constructed patientUserProfile for Patient ID login:', patientUserProfile);
             authLogin(null, patientUserProfile); // authUser is null for this type of login
             toast({
               title: "Login Successful",
@@ -74,13 +77,15 @@ export default function LoginPage() {
             // Redirection handled by useEffect
             setIsSubmitting(false);
             return; // Exit after successful patient ID login
+          } else {
+            console.log('[LoginPage] Patient record found (ID:', docSnap.id,'), but initialPassword did not match. Record password hash (if any):', record.initialPassword, 'Input password:', password ? '******' : '(empty)');
           }
         }
-        if (patientRecordFound) return; // Should have returned inside loop
-        console.log('[LoginPage] Patient ID found, but initialPassword did not match.');
-        // Don't toast error yet, fall through to email login attempt
+        if (patientRecordFoundAndMatched) return; // Should have returned inside loop
+        console.log('[LoginPage] Patient ID(s) found, but initialPassword did not match for any.');
+        // Don't toast error yet, fall through to email login attempt if no match
       } else {
-        console.log('[LoginPage] No patient record found for ID:', identifier);
+        console.log('[LoginPage] No patient record found for IDNumber:', identifier);
         // Fall through to email login attempt
       }
     } catch (error: any) {
@@ -88,9 +93,9 @@ export default function LoginPage() {
       // Fall through to email login attempt, don't toast yet
     }
 
-    // Attempt Firebase Email/Password login
+    // Attempt Firebase Email/Password login if Patient ID login didn't succeed
+    console.log('[LoginPage] Attempting Firebase email/password login for identifier (email):', identifier);
     try {
-      console.log('[LoginPage] Attempting Firebase email/password login for:', identifier);
       const userCredential = await signInWithEmailAndPassword(auth, identifier, password);
       const firebaseUser = userCredential.user;
       console.log('[LoginPage] Firebase auth successful for UID:', firebaseUser.uid);
@@ -100,24 +105,24 @@ export default function LoginPage() {
       const userDocSnap = await getDoc(userDocRef);
 
       if (userDocSnap.exists()) {
-        const userProfileData = userDocSnap.data() as User;
-        console.log('[LoginPage] Firestore user profile found for Firebase auth:', userProfileData);
-        authLogin(firebaseUser, userProfileData); // Update auth store
+        const userProfileDataFromFirestore = userDocSnap.data() as User;
+        console.log('[LoginPage] Firestore user profile found for Firebase auth:', userProfileDataFromFirestore);
+        authLogin(firebaseUser, userProfileDataFromFirestore); // Update auth store
         toast({
           title: "Login Successful",
-          description: `Welcome back, ${userProfileData.firstName}! Redirecting...`,
+          description: `Welcome back, ${userProfileDataFromFirestore.firstName}! Redirecting...`,
         });
         // Redirection is now handled by useEffect
       } else {
         console.error("[LoginPage] Firebase auth successful, but Firestore user profile not found for UID:", firebaseUser.uid);
-        // This case should ideally not happen if profile is created on signup
-        throw new Error("User profile not found after Firebase login. Please contact support.");
+        await firebaseSignOut(auth); // Sign out the Firebase user if profile is missing
+        throw new Error("User profile not found. Please contact support or try signing up again.");
       }
     } catch (error: any) {
       console.error("[LoginPage] Firebase Email/Password login error:", error);
       toast({
         title: "Login Failed",
-        description: error.message || "Invalid credentials or Patient ID/Password combination. Please try again.",
+        description: error.message || "Invalid Email/Password or Patient ID/Password combination. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -129,8 +134,11 @@ export default function LoginPage() {
     return <div className="flex min-h-screen items-center justify-center"><p>Loading authentication state...</p></div>;
   }
 
-  if (isAuthenticated && userProfile) {
-    // Already logged in, useEffect will redirect
+  // This check is primarily for users who are already fully authenticated and have a profile.
+  // Redirection for new logins (both types) is handled by the useEffect hook.
+  if (isAuthenticated && userProfile && !isSubmitting) {
+    // Already logged in, useEffect will redirect.
+    // This message is a fallback if useEffect redirection is slow or fails.
     return <div className="flex min-h-screen items-center justify-center"><p>Redirecting to your dashboard...</p></div>;
   }
 
