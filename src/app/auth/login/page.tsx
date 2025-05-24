@@ -12,11 +12,17 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
 
+// Simple mock patient store (in a real app, this would be a database)
+const mockPatientCredentials: Record<string, string> = {
+  "P001": "password123",
+  "P002": "testpass",
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuthStore();
   const { toast } = useToast();
-  const [email, setEmail] = useState('');
+  const [emailOrId, setEmailOrId] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -26,41 +32,77 @@ export default function LoginPage() {
 
     // Mock authentication logic
     setTimeout(() => {
-      let userRole = 'patient'; // Default role
-      if (email.startsWith('doctor@')) {
+      let userRole: 'doctor' | 'patient' | null = null;
+      let mockUser: MockUser | null = null;
+      let loginSuccessful = false;
+
+      // Check if it's a patient ID login (e.g., "P001")
+      // A more robust check might involve a regex like /^[Pp]\d+$/
+      if (emailOrId.toUpperCase().startsWith('P') && !emailOrId.includes('@')) {
+        // For simplicity, assume any password is correct for a known mock patient ID
+        // Or, check against mockPatientCredentials if populated
+        if (mockPatientCredentials[emailOrId.toUpperCase()] === password) {
+            userRole = 'patient';
+            mockUser = {
+                user_id: Date.now(), // Mock ID, could be derived from patient ID
+                username: emailOrId.toUpperCase(),
+                email: `${emailOrId.toLowerCase()}@example.com`, // Mock email
+                first_name: 'Patient',
+                last_name: emailOrId.toUpperCase(), // Use ID as last name for mock
+                user_type: 'patient',
+                created_at: new Date().toISOString(),
+            };
+            loginSuccessful = true;
+        } else if (Object.keys(mockPatientCredentials).includes(emailOrId.toUpperCase())) {
+            // ID exists, but password wrong
+             toast({
+                title: "Login Failed",
+                description: "Incorrect password for Patient ID.",
+                variant: "destructive",
+            });
+            setIsLoading(false);
+            return;
+        }
+         // If ID not in mock store, it will fall through to general error
+      } else if (emailOrId.startsWith('doctor@')) {
         userRole = 'doctor';
-      } else if (email.startsWith('patient@')) {
+        // Simulate password check for doctor
+        loginSuccessful = true; // Assume any password is fine for mock doctor
+      } else if (emailOrId.startsWith('patient@')) {
         userRole = 'patient';
+        // Simulate password check for patient email
+        loginSuccessful = true; // Assume any password is fine for mock patient email
+      }
+
+      if (loginSuccessful && userRole) {
+        if (!mockUser) { // Create mockUser if not already created (for email logins)
+            mockUser = {
+                user_id: Date.now(),
+                username: emailOrId.split('@')[0],
+                email: emailOrId,
+                first_name: userRole === 'doctor' ? 'Doctor' : 'Patient',
+                last_name: 'User',
+                user_type: userRole,
+                created_at: new Date().toISOString(),
+            };
+        }
+        login(mockUser);
+        toast({
+          title: "Login Successful",
+          description: `Welcome back, ${mockUser.first_name}! Redirecting...`,
+        });
+
+        if (mockUser.user_type === 'doctor') {
+          router.push('/doctor/dashboard');
+        } else {
+          router.push('/patient/dashboard');
+        }
       } else {
          toast({
           title: "Login Failed",
-          description: "Invalid email prefix. Use 'doctor@' or 'patient@'.",
+          description: "Invalid credentials. Use 'doctor@', 'patient@', or a valid Patient ID and password.",
           variant: "destructive",
         });
-        setIsLoading(false);
-        return;
-      }
-
-      const mockUser: MockUser = {
-        user_id: Date.now(),
-        username: email.split('@')[0],
-        email: email,
-        first_name: userRole === 'doctor' ? 'Doctor' : 'Patient',
-        last_name: 'User',
-        user_type: userRole as 'doctor' | 'patient',
-        created_at: new Date().toISOString(),
-      };
-      
-      login(mockUser);
-      toast({
-        title: "Login Successful",
-        description: `Welcome back, ${mockUser.first_name}! Redirecting...`,
-      });
-
-      if (mockUser.user_type === 'doctor') {
-        router.push('/doctor/dashboard');
-      } else {
-        router.push('/patient/dashboard');
       }
       setIsLoading(false);
     }, 1000);
@@ -75,14 +117,14 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="emailOrId">Email or Patient ID</Label>
             <Input 
-              id="email" 
-              type="email" 
-              placeholder="doctor@example.com or patient@example.com" 
+              id="emailOrId" 
+              type="text" 
+              placeholder="e.g., doctor@example.com or P001" 
               required 
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={emailOrId}
+              onChange={(e) => setEmailOrId(e.target.value)}
               disabled={isLoading}
             />
           </div>

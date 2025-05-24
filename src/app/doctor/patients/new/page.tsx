@@ -22,7 +22,8 @@ export default function AddNewPatientPage() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [idNumber, setIdNumber] = useState(''); // National ID
+  const [idNumber, setIdNumber] = useState(''); // National ID or patient specific ID
+  const [password, setPassword] = useState(''); // New password field
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [address, setAddress] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -39,7 +40,7 @@ export default function AddNewPatientPage() {
     setIsLoading(true);
 
     // Mock creating new patient. In a real app, this would be an API call.
-    // const newPatientData: Omit<Patient, 'user_id' | 'username' | 'user_type' | 'created_at'> & { dedicated_prompts?: string } = {
+    // const newPatientData: Omit<Patient, 'user_id' | 'username' | 'user_type' | 'created_at'> & { dedicated_prompts?: string, password_hash: string } = {
     //   first_name: firstName,
     //   last_name: lastName,
     //   email,
@@ -48,16 +49,19 @@ export default function AddNewPatientPage() {
     //   address,
     //   phone_number: phoneNumber,
     //   dedicated_prompts: patientSpecificPrompts,
+    //   password_hash: // hash the password here
     // };
 
     // Simulate API call
     setTimeout(() => {
-      console.log('New patient data submitted (mock):', { firstName, lastName, email, idNumber, dateOfBirth, address, phoneNumber, patientSpecificPrompts });
+      console.log('New patient data submitted (mock):', { firstName, lastName, email, idNumber, password, dateOfBirth, address, phoneNumber, patientSpecificPrompts });
       toast({
         title: 'Patient Profile Created',
-        description: `Profile for ${firstName} ${lastName} has been successfully created.`,
+        description: `Profile for ${firstName} ${lastName} has been successfully created. They can now log in with ID: ${idNumber}.`,
       });
       // Redirect to patient list or the new patient's profile page
+      // Ideally, store the new patient (including a hashed password and ID) in a mock DB for the login page to check against.
+      // For simplicity, this example doesn't implement a shared mock DB.
       router.push('/doctor/patients'); 
       setIsLoading(false);
     }, 1000);
@@ -97,18 +101,24 @@ export default function AddNewPatientPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <Label htmlFor="idNumber">Identification Number *</Label>
-                <Input id="idNumber" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} required disabled={isLoading} placeholder="e.g., National ID, Passport No."/>
+                <Label htmlFor="idNumber">Patient ID *</Label>
+                <Input id="idNumber" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} required disabled={isLoading} placeholder="e.g., P001 (will be used for login)"/>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                <Input id="dateOfBirth" type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} disabled={isLoading} />
+                <Label htmlFor="password">Set Password *</Label>
+                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={isLoading} placeholder="Min. 8 characters"/>
               </div>
             </div>
             
-            <div className="space-y-2">
-              <Label htmlFor="phoneNumber">Phone Number</Label>
-              <Input id="phoneNumber" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} disabled={isLoading} placeholder="e.g., (555) 123-4567"/>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                    <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                    <Input id="dateOfBirth" type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} disabled={isLoading} />
+                </div>
+                <div className="space-y-2">
+                    <Label htmlFor="phoneNumber">Phone Number</Label>
+                    <Input id="phoneNumber" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} disabled={isLoading} placeholder="e.g., (555) 123-4567"/>
+                </div>
             </div>
 
             <div className="space-y-2">
