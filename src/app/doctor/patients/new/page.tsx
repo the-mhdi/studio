@@ -61,7 +61,7 @@ export default function AddNewPatientPage() {
       lastName: lastName.trim(),
       idNumber: idNumber.trim(),
       initialPassword: initialPassword.trim(), // Storing the initial password
-      createdAt: serverTimestamp(),
+      //createdAt: serverTimestamp(),
     };
 
     if (email.trim()) patientDataToSave.email = email.trim();
