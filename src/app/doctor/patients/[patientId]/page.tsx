@@ -11,14 +11,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/lib/authStore';
-import type { Patient, Diagnosis, PatientDocument } from '@/lib/types';
+import type { Patient, Diagnosis, PatientDocument, ChatMessage } from '@/lib/types';
 import { DashboardHeader } from '@/components/shared/dashboard-header';
-import { User, Stethoscope, FileText, UploadCloud, PlusCircle, Edit, Trash2, CalendarIcon } from 'lucide-react';
+import { User, Stethoscope, FileText, UploadCloud, PlusCircle, Edit, Trash2, CalendarIcon, MessageSquare, Bot as BotIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 // Mock Data (replace with API calls)
 const MOCK_PATIENTS_DB: Patient[] = [
@@ -37,6 +39,15 @@ const MOCK_DOCUMENTS_DB: PatientDocument[] = [
   { document_id: 302, patient_id: 1, document_name: 'X-Ray Report - Ankle.pdf', document_type: 'Imaging Report', document_path: '/path/to/doc2.pdf', uploaded_at: '2024-01-21T10:00:00Z', uploaded_by: 1 },
 ];
 
+const MOCK_CHAT_MESSAGES_DB: ChatMessage[] = [
+    { chat_id: 1, patient_id: 1, sender_id: 1, sender_name: 'Alice Smith', message_text: 'Hello AI, I have a question about my medication.', sent_at: '2024-05-20T10:00:00Z', is_user: true },
+    { chat_id: 2, patient_id: 1, sender_id: 0, sender_name: 'MediMind AI', message_text: 'Hello Alice! I can help with general information. What is your question?', sent_at: '2024-05-20T10:00:30Z', is_user: false },
+    { chat_id: 3, patient_id: 1, sender_id: 1, sender_name: 'Alice Smith', message_text: 'Should I take it with food?', sent_at: '2024-05-20T10:01:00Z', is_user: true },
+    { chat_id: 4, patient_id: 1, sender_id: 0, sender_name: 'MediMind AI', message_text: 'Many medications are best taken with food to avoid stomach upset. However, for specific advice about your prescription, please consult your doctor or pharmacist.', sent_at: '2024-05-20T10:01:45Z', is_user: false },
+    { chat_id: 5, patient_id: 2, sender_id: 2, sender_name: 'Bob Johnson', message_text: 'What are common side effects of ibuprofen?', sent_at: '2024-05-21T14:30:00Z', is_user: true },
+    { chat_id: 6, patient_id: 2, sender_id: 0, sender_name: 'MediMind AI', message_text: 'Common side effects of ibuprofen can include stomach pain, heartburn, nausea, and headache. If you experience severe side effects, please contact your doctor.', sent_at: '2024-05-21T14:30:50Z', is_user: false },
+];
+
 
 export default function PatientProfilePage() {
   const params = useParams();
@@ -49,6 +60,7 @@ export default function PatientProfilePage() {
   const [patient, setPatient] = useState<Patient | null>(null);
   const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
   const [documents, setDocuments] = useState<PatientDocument[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editablePatientDetails, setEditablePatientDetails] = useState<Partial<Patient>>({});
@@ -63,6 +75,7 @@ export default function PatientProfilePage() {
   const [isAddingDiagnosis, setIsAddingDiagnosis] = useState(false);
 
   const activeTab = searchParams.get('tab') || 'details';
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (patientId) {
@@ -72,8 +85,18 @@ export default function PatientProfilePage() {
       setEditablePatientDetails(foundPatient || {});
       setDiagnoses(MOCK_DIAGNOSES_DB.filter(d => d.patient_id === patientId));
       setDocuments(MOCK_DOCUMENTS_DB.filter(doc => doc.patient_id === patientId));
+      setChatMessages(MOCK_CHAT_MESSAGES_DB.filter(chat => chat.patient_id === patientId).sort((a,b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime()));
     }
   }, [patientId]);
+
+  useEffect(() => {
+    if (activeTab === 'chatHistory' && scrollAreaRef.current) {
+      const scrollViewport = scrollAreaRef.current.querySelector('div[data-radix-scroll-area-viewport]');
+      if (scrollViewport) {
+        scrollViewport.scrollTop = scrollViewport.scrollHeight;
+      }
+    }
+  }, [chatMessages, activeTab]);
 
   const handleEditDetailsToggle = () => {
     if (isEditingDetails && patient) { // Save logic
@@ -165,10 +188,11 @@ export default function PatientProfilePage() {
       />
 
       <Tabs defaultValue={activeTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3 mb-6">
+        <TabsList className="grid w-full grid-cols-4 mb-6"> {/* Updated grid-cols-4 */}
           <TabsTrigger value="details"><User className="mr-2 h-4 w-4 inline-block"/>Details</TabsTrigger>
           <TabsTrigger value="diagnoses"><Stethoscope className="mr-2 h-4 w-4 inline-block"/>Diagnoses</TabsTrigger>
           <TabsTrigger value="documents"><FileText className="mr-2 h-4 w-4 inline-block"/>Documents</TabsTrigger>
+          <TabsTrigger value="chatHistory"><MessageSquare className="mr-2 h-4 w-4 inline-block"/>AI Chat</TabsTrigger> {/* New Tab */}
         </TabsList>
 
         <TabsContent value="details">
@@ -308,6 +332,69 @@ export default function PatientProfilePage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="chatHistory">
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle>AI Assistant Chat History</CardTitle>
+              <CardDescription>Conversation between {patient.first_name} {patient.last_name} and the MediMind AI.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {chatMessages.length === 0 ? (
+                <div className="text-center py-10 text-muted-foreground">
+                  <MessageSquare size={48} className="mx-auto mb-4 opacity-50" />
+                  No chat history found for this patient.
+                </div>
+              ) : (
+                <ScrollArea className="h-[500px] w-full p-4 border rounded-md bg-muted/20" ref={scrollAreaRef}>
+                  <div className="space-y-6">
+                    {chatMessages.map((message) => (
+                      <div
+                        key={message.chat_id}
+                        className={cn(
+                          "flex items-end gap-3",
+                          message.is_user ? "justify-end" : "justify-start" // is_user means patient sent it
+                        )}
+                      >
+                        {!message.is_user && ( // AI message
+                          <Avatar className="h-10 w-10">
+                            <AvatarFallback>
+                              <BotIcon size={24} />
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                        <div
+                          className={cn(
+                            "max-w-[70%] rounded-xl px-4 py-3 shadow",
+                            message.is_user // Patient's message
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-card text-card-foreground border" // AI's message
+                          )}
+                        >
+                          <p className="text-sm font-medium mb-1">
+                            {message.is_user ? patient.first_name : message.sender_name || "MediMind AI"}
+                          </p>
+                          <p className="text-sm whitespace-pre-wrap">{message.message_text}</p>
+                          <p className="mt-1 text-xs opacity-70 text-right">
+                            {format(new Date(message.sent_at), "MMM d, HH:mm")}
+                          </p>
+                        </div>
+                        {message.is_user && ( // Patient message
+                           <Avatar className="h-10 w-10">
+                             <AvatarFallback>
+                              <User size={24} />
+                            </AvatarFallback>
+                          </Avatar>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
        <Card className="mt-8">
         <CardHeader>
@@ -326,6 +413,7 @@ export default function PatientProfilePage() {
                 <div>
                     <p className="text-lg"><strong>Diagnoses Count:</strong> {diagnoses.length}</p>
                     <p className="text-lg"><strong>Documents Count:</strong> {documents.length}</p>
+                    <p className="text-lg"><strong>Chat Messages:</strong> {chatMessages.length}</p>
                     <p className="text-muted-foreground text-sm">Manage all aspects of this patient's profile using the tabs above.</p>
                 </div>
             </div>
@@ -334,3 +422,4 @@ export default function PatientProfilePage() {
     </div>
   );
 }
+
