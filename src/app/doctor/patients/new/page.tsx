@@ -18,13 +18,14 @@ import type { PatientRecord } from '@/lib/types';
 
 export default function AddNewPatientPage() {
   const router = useRouter();
-  const { userProfile } = useAuthStore(); 
+  const { userProfile: doctorUserProfile } = useAuthStore(); 
   const { toast } = useToast();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
-  const [idNumber, setIdNumber] = useState('');
+  const [idNumber, setIdNumber] = useState(''); // This is the Patient ID
+  const [initialPassword, setInitialPassword] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [address, setAddress] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -36,25 +37,31 @@ export default function AddNewPatientPage() {
     event.preventDefault();
     console.log('[AddNewPatientPage] handleSubmit triggered.');
 
-    if (!userProfile || userProfile.userType !== 'doctor') {
+    if (!doctorUserProfile || doctorUserProfile.userType !== 'doctor') {
       toast({ title: 'Error', description: 'Unauthorized action. You must be logged in as a doctor.', variant: 'destructive' });
-      console.error('[AddNewPatientPage] Unauthorized: userProfile missing or not a doctor.', userProfile);
+      console.error('[AddNewPatientPage] Unauthorized: doctorUserProfile missing or not a doctor.', doctorUserProfile);
       return;
     }
     setIsLoading(true);
 
-    if (!firstName.trim() || !lastName.trim() || !idNumber.trim()) {
-        toast({ title: 'Missing Required Fields', description: 'First Name, Last Name, and Patient ID are required.', variant: 'destructive' });
+    if (!firstName.trim() || !lastName.trim() || !idNumber.trim() || !initialPassword.trim()) {
+        toast({ title: 'Missing Required Fields', description: 'First Name, Last Name, Patient ID, and Initial Password are required.', variant: 'destructive' });
         setIsLoading(false);
         return;
     }
     
-    const patientDataToSave: Partial<PatientRecord> = {
-      doctorId: userProfile.uid,
+    // SECURITY WARNING: Storing initial passwords directly is not recommended for production login.
+    // This should be a temporary password for a first-time setup or an invitation system.
+    // True patient login should use Firebase Authentication with patient-chosen passwords.
+    console.warn("[AddNewPatientPage] SECURITY WARNING: Storing an 'initialPassword'. This should ideally be temporary and part of a secure patient onboarding flow, not for direct, long-term login.");
+
+    const patientDataToSave: Omit<PatientRecord, 'recordId' | 'linkedAuthUid'> = {
+      doctorId: doctorUserProfile.uid,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       idNumber: idNumber.trim(),
-      createdAt: serverTimestamp() as any, // Firestore handles this conversion
+      initialPassword: initialPassword.trim(), // Storing the initial password
+      createdAt: serverTimestamp(),
     };
 
     if (email.trim()) patientDataToSave.email = email.trim();
@@ -63,23 +70,33 @@ export default function AddNewPatientPage() {
     if (phoneNumber.trim()) patientDataToSave.phoneNumber = phoneNumber.trim();
     if (patientSpecificPrompts.trim()) patientDataToSave.patientSpecificPrompts = patientSpecificPrompts.trim();
 
-    console.log('[AddNewPatientPage] Current doctor userProfile:', JSON.stringify(userProfile, null, 2));
+    console.log('[AddNewPatientPage] Current doctor userProfile:', JSON.stringify(doctorUserProfile, null, 2));
     console.log('[AddNewPatientPage] Attempting to save patient data:', JSON.stringify(patientDataToSave, null, 2));
 
     try {
       const docRef = await addDoc(collection(db, "patientRecords"), patientDataToSave);
 
       toast({
-        title: 'Patient Profile Created',
-        description: `Profile for ${firstName} ${lastName} (ID: ${idNumber}) has been successfully created. Record ID: ${docRef.id}`,
+        title: 'Patient Record Created',
+        description: `Record for ${firstName} ${lastName} (Patient ID: ${idNumber}) has been successfully created. Record ID: ${docRef.id}`,
       });
       console.log('[AddNewPatientPage] Patient record created successfully. Doc ID:', docRef.id);
-      router.push('/doctor/patients'); 
+      // Clear form
+      setFirstName('');
+      setLastName('');
+      setEmail('');
+      setIdNumber('');
+      setInitialPassword('');
+      setDateOfBirth('');
+      setAddress('');
+      setPhoneNumber('');
+      setPatientSpecificPrompts('');
+      // router.push('/doctor/patients'); // Optionally redirect
     } catch (error: any) {
       console.error("[AddNewPatientPage] Error adding patient record: ", error);
       toast({
-        title: 'Error Creating Profile',
-        description: error.message || 'Could not save patient profile to the database. Please check console for details.',
+        title: 'Error Creating Record',
+        description: error.message || 'Could not save patient record to the database. Please check console for details.',
         variant: 'destructive',
       });
     } finally {
@@ -91,7 +108,7 @@ export default function AddNewPatientPage() {
     <div>
       <DashboardHeader
         title="Add New Patient Record"
-        description="Enter the details for the new patient."
+        description="Enter the details for the new patient, including an ID and an initial password for their record."
       />
 
       <form onSubmit={handleSubmit}>
@@ -99,7 +116,7 @@ export default function AddNewPatientPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><UserPlus className="h-6 w-6 text-primary"/>Patient Information</CardTitle>
             <CardDescription>
-              Fields marked with * are required. This creates a patient record.
+              Fields marked with * are required.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -117,27 +134,31 @@ export default function AddNewPatientPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                     <Label htmlFor="idNumber">Patient ID *</Label>
-                    <Input id="idNumber" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} required disabled={isLoading} placeholder="e.g., P001"/>
+                    <Input id="idNumber" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} required disabled={isLoading} placeholder="e.g., P001 (created by doctor)"/>
                 </div>
                  <div className="space-y-2">
-                    <Label htmlFor="email">Email Address (Optional)</Label>
-                    <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={isLoading} placeholder="e.g., john.doe@example.com"/>
+                    <Label htmlFor="initialPassword">Initial Password *</Label>
+                    <Input id="initialPassword" type="password" value={initialPassword} onChange={(e) => setInitialPassword(e.target.value)} required disabled={isLoading} placeholder="Set an initial password"/>
                 </div>
+            </div>
+             <div className="space-y-2">
+                <Label htmlFor="email">Email Address (Optional)</Label>
+                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={isLoading} placeholder="e.g., john.doe@example.com"/>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                    <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                    <Label htmlFor="dateOfBirth">Date of Birth (Optional)</Label>
                     <Input id="dateOfBirth" type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} disabled={isLoading} />
                 </div>
                 <div className="space-y-2">
-                    <Label htmlFor="phoneNumber">Phone Number</Label>
+                    <Label htmlFor="phoneNumber">Phone Number (Optional)</Label>
                     <Input id="phoneNumber" type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} disabled={isLoading} placeholder="e.g., (555) 123-4567"/>
                 </div>
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="address">Address</Label>
+              <Label htmlFor="address">Address (Optional)</Label>
               <Textarea id="address" value={address} onChange={(e) => setAddress(e.target.value)} rows={3} disabled={isLoading} placeholder="e.g., 123 Main St, Anytown, USA"/>
             </div>
 
@@ -149,7 +170,7 @@ export default function AddNewPatientPage() {
                 onChange={(e) => setPatientSpecificPrompts(e.target.value)} 
                 rows={4} 
                 disabled={isLoading} 
-                placeholder="e.g., Patient prefers concise information. Avoid medical jargon. Focus on positive reinforcement."
+                placeholder="e.g., Patient prefers concise information. Avoid medical jargon."
               />
               <p className="text-xs text-muted-foreground">
                 These prompts can help guide the AI's interaction specifically for this patient.
@@ -166,5 +187,3 @@ export default function AddNewPatientPage() {
     </div>
   );
 }
-
-    
