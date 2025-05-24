@@ -1,3 +1,4 @@
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Stethoscope, Users, Bot } from "lucide-react";
@@ -28,10 +29,10 @@ export default function HomePage() {
           </div>
           <nav className="space-x-4">
             <Button variant="ghost" asChild className="text-primary-foreground hover:bg-primary/80 hover:text-primary-foreground">
-              <Link href="/login">Login</Link>
+              <Link href="/auth/login">Login</Link>
             </Button>
             <Button variant="secondary" asChild>
-              <Link href="/signup">Sign Up</Link>
+              <Link href="/auth/signup">Sign Up</Link>
             </Button>
           </nav>
         </div>
@@ -45,7 +46,7 @@ export default function HomePage() {
           </p>
           <div className="flex justify-center gap-4 mb-12">
             <Button size="lg" asChild>
-              <Link href="/signup">Get Started</Link>
+              <Link href="/auth/signup">Get Started</Link>
             </Button>
             <Button size="lg" variant="outline" asChild>
               <Link href="#features">Learn More</Link>

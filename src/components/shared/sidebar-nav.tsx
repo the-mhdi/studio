@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -33,7 +34,7 @@ export function SidebarNav({ navItems, logo, userName, userRole }: SidebarNavPro
   const handleLogout = () => {
     logout();
     toast({ title: "Logged Out", description: "You have been successfully logged out." });
-    router.push('/login');
+    router.push('/auth/login');
   };
 
   return (

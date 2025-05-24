@@ -22,7 +22,7 @@ export default function DoctorLayout({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isAuthenticated || user?.user_type !== 'doctor') {
-      router.push('/login');
+      router.push('/auth/login');
     }
   }, [isAuthenticated, user, router]);
 
