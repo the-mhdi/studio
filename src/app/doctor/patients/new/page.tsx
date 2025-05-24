@@ -26,6 +26,7 @@ export default function AddNewPatientPage() {
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [address, setAddress] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [patientSpecificPrompts, setPatientSpecificPrompts] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
 
@@ -38,7 +39,7 @@ export default function AddNewPatientPage() {
     setIsLoading(true);
 
     // Mock creating new patient. In a real app, this would be an API call.
-    // const newPatientData: Omit<Patient, 'user_id' | 'username' | 'user_type' | 'created_at'> = {
+    // const newPatientData: Omit<Patient, 'user_id' | 'username' | 'user_type' | 'created_at'> & { dedicated_prompts?: string } = {
     //   first_name: firstName,
     //   last_name: lastName,
     //   email,
@@ -46,11 +47,12 @@ export default function AddNewPatientPage() {
     //   date_of_birth: dateOfBirth,
     //   address,
     //   phone_number: phoneNumber,
+    //   dedicated_prompts: patientSpecificPrompts,
     // };
 
     // Simulate API call
     setTimeout(() => {
-      console.log('New patient data submitted (mock):', { firstName, lastName, email, idNumber, dateOfBirth, address, phoneNumber });
+      console.log('New patient data submitted (mock):', { firstName, lastName, email, idNumber, dateOfBirth, address, phoneNumber, patientSpecificPrompts });
       toast({
         title: 'Patient Profile Created',
         description: `Profile for ${firstName} ${lastName} has been successfully created.`,
@@ -112,6 +114,21 @@ export default function AddNewPatientPage() {
             <div className="space-y-2">
               <Label htmlFor="address">Address</Label>
               <Textarea id="address" value={address} onChange={(e) => setAddress(e.target.value)} rows={3} disabled={isLoading} placeholder="e.g., 123 Main St, Anytown, USA"/>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="patientSpecificPrompts">Dedicated Patient Prompts (Optional)</Label>
+              <Textarea 
+                id="patientSpecificPrompts" 
+                value={patientSpecificPrompts} 
+                onChange={(e) => setPatientSpecificPrompts(e.target.value)} 
+                rows={4} 
+                disabled={isLoading} 
+                placeholder="e.g., Patient prefers concise information. Avoid medical jargon. Focus on positive reinforcement."
+              />
+              <p className="text-xs text-muted-foreground">
+                These prompts can help guide the AI's interaction specifically for this patient.
+              </p>
             </div>
           </CardContent>
           <CardFooter>

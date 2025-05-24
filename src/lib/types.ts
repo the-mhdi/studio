@@ -23,6 +23,7 @@ export interface Patient extends User {
   date_of_birth?: string; // YYYY-MM-DD
   address?: string;
   phone_number?: string;
+  dedicated_prompts?: string; // Dedicated AI prompts for this patient
 }
 
 export interface DoctorPatientMap {
