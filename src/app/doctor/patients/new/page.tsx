@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/lib/authStore';
 import { DashboardHeader } from '@/components/shared/dashboard-header';
 import { UserPlus } from 'lucide-react';
-import { db, fbConfigForDebug } from '@/lib/firebase'; // Import fbConfigForDebug
+import { db, fbConfigForDebug } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import type { PatientRecord } from '@/lib/types';
 
@@ -23,13 +23,13 @@ export default function AddNewPatientPage() {
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  // const [email, setEmail] = useState(''); // Temporarily commented for minimal data
+  const [email, setEmail] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [initialPassword, setInitialPassword] = useState('');
-  // const [dateOfBirth, setDateOfBirth] = useState(''); // Temporarily commented
-  // const [address, setAddress] = useState(''); // Temporarily commented
-  // const [phoneNumber, setPhoneNumber] = useState(''); // Temporarily commented
-  // const [patientSpecificPrompts, setPatientSpecificPrompts] = useState(''); // Temporarily commented
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [address, setAddress] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [patientSpecificPrompts, setPatientSpecificPrompts] = useState('');
 
   const [isLoading, setIsLoading] = useState(false);
 
@@ -37,10 +37,14 @@ export default function AddNewPatientPage() {
     // Log the Firebase config being used by the client SDK when the component mounts
     // Ensure fbConfigForDebug is serializable if it contains non-serializable parts (like functions)
     // For simple config objects, JSON.stringify is fine.
-    try {
-        console.log('[AddNewPatientPage] Firebase Config being used by client SDK:', JSON.stringify(fbConfigForDebug, null, 2));
-    } catch (e) {
-        console.error('[AddNewPatientPage] Could not stringify fbConfigForDebug. Logging directly:', fbConfigForDebug);
+    if (fbConfigForDebug) {
+      try {
+          console.log('[AddNewPatientPage] Firebase Config being used by client SDK:', JSON.stringify(fbConfigForDebug, null, 2));
+      } catch (e) {
+          console.error('[AddNewPatientPage] Could not stringify fbConfigForDebug. Logging directly:', fbConfigForDebug);
+      }
+    } else {
+        console.warn('[AddNewPatientPage] fbConfigForDebug is not available from firebase.ts');
     }
   }, []);
 
@@ -71,33 +75,29 @@ export default function AddNewPatientPage() {
 
     setIsLoading(true);
     
-    // SECURITY NOTE: Storing an 'initialPassword' directly is not recommended for production.
-    // This should ideally be temporary and part of a secure patient onboarding flow.
     console.warn("[AddNewPatientPage] SECURITY NOTE: Storing an 'initialPassword'. This should ideally be temporary and part of a secure patient onboarding flow (e.g., force change on first login), not for direct, long-term login if patients use this record directly to authenticate.");
 
-
-    const patientDataToSave: Partial<PatientRecord> = { // Use Partial for minimal data
+    const patientDataToSave: Partial<PatientRecord> = {
       doctorId: doctorUserProfile.uid,
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       idNumber: idNumber.trim(),
-      initialPassword: initialPassword.trim(), // Still include for the rule check if we revert
+      initialPassword: initialPassword.trim(),
       createdAt: serverTimestamp(),
     };
 
-    // Optional fields are commented out for minimal data debugging
-    // if (email.trim()) patientDataToSave.email = email.trim();
-    // if (dateOfBirth.trim()) patientDataToSave.dateOfBirth = dateOfBirth.trim();
-    // if (address.trim()) patientDataToSave.address = address.trim();
-    // if (phoneNumber.trim()) patientDataToSave.phoneNumber = phoneNumber.trim();
-    // if (patientSpecificPrompts.trim()) patientDataToSave.patientSpecificPrompts = patientSpecificPrompts.trim();
+    if (email.trim()) patientDataToSave.email = email.trim();
+    if (dateOfBirth.trim()) patientDataToSave.dateOfBirth = dateOfBirth.trim();
+    if (address.trim()) patientDataToSave.address = address.trim();
+    if (phoneNumber.trim()) patientDataToSave.phoneNumber = phoneNumber.trim();
+    if (patientSpecificPrompts.trim()) patientDataToSave.patientSpecificPrompts = patientSpecificPrompts.trim();
 
 
     console.log('[AddNewPatientPage] Current doctor userProfile:', JSON.stringify(doctorUserProfile, null, 2));
-    console.log('[AddNewPatientPage] Attempting to save patient data (MINIMAL):', JSON.stringify(patientDataToSave, null, 2));
+    console.log('[AddNewPatientPage] Attempting to save patient data:', JSON.stringify(patientDataToSave, null, 2));
 
     try {
-      const docRef = await addDoc(collection(db, "patientRecords"), patientDataToSave as PatientRecord); // Cast to PatientRecord if confident in structure
+      const docRef = await addDoc(collection(db, "patientRecords"), patientDataToSave as PatientRecord); // Cast to PatientRecord
 
       toast({
         title: 'Patient Record Created',
@@ -107,13 +107,13 @@ export default function AddNewPatientPage() {
       // Clear form
       setFirstName('');
       setLastName('');
-      // setEmail('');
+      setEmail('');
       setIdNumber('');
       setInitialPassword('');
-      // setDateOfBirth('');
-      // setAddress('');
-      // setPhoneNumber('');
-      // setPatientSpecificPrompts('');
+      setDateOfBirth('');
+      setAddress('');
+      setPhoneNumber('');
+      setPatientSpecificPrompts('');
     } catch (error: any) {
       console.error("[AddNewPatientPage] Error adding patient record: ", error);
       toast({
@@ -138,7 +138,6 @@ export default function AddNewPatientPage() {
             <CardTitle className="flex items-center gap-2"><UserPlus className="h-6 w-6 text-primary"/>Patient Information</CardTitle>
             <CardDescription>
               Fields marked with * are required. Initial Password must be at least 6 characters.
-              Other fields are temporarily optional for debugging.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -172,7 +171,7 @@ export default function AddNewPatientPage() {
                 />
               </div>
             </div>
-            {/* Optional fields temporarily commented out for debugging
+            
             <div className="space-y-2">
               <Label htmlFor="email">Email Address (Optional)</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={isLoading} placeholder="e.g., john.doe@example.com" />
@@ -205,7 +204,7 @@ export default function AddNewPatientPage() {
                 These prompts can help guide the AI's interaction specifically for this patient.
               </p>
             </div>
-            */}
+            
           </CardContent>
           <CardFooter>
             <Button type="submit" disabled={isLoading} size="lg">
