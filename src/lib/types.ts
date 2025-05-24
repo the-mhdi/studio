@@ -2,12 +2,14 @@
 export type UserRole = 'doctor' | 'patient';
 
 export interface User {
-  uid: string; // Firebase Auth UID
+  uid: string; // Firebase Auth UID for standard users, or a derived/special ID for PatientRecord-based logins
   email: string | null;
   firstName: string;
-  lastName: string;
+  lastName:string;
   userType: UserRole;
   createdAt: any; // Firestore serverTimestamp or ISO string
+  // For patients logged in via PatientRecord, this might be the recordId or idNumber
+  patientRecordIdForAuth?: string; 
 }
 
 export interface Doctor extends User {
@@ -18,11 +20,6 @@ export interface Doctor extends User {
 
 export interface Patient extends User {
   userType: 'patient';
-  // These fields might be part of PatientRecord instead if doctors manage them primarily
-  // idNumber?: string; 
-  // dateOfBirth?: string;
-  // address?: string;
-  // phoneNumber?: string;
 }
 
 // Data record for a patient, managed by doctors.
@@ -38,7 +35,7 @@ export interface PatientRecord {
   address?: string;
   phoneNumber?: string;
   patientSpecificPrompts?: string;
-  createdAt: any; Firestore serverTimestamp
+  createdAt: any; // Firestore serverTimestamp
   linkedAuthUid?: string; // UID of the patient's Firebase Auth account if linked to this record
 }
 
@@ -110,4 +107,3 @@ export interface PillReminder {
   notes?: string;
   createdAt: any; // Firestore serverTimestamp
 }
-
