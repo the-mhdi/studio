@@ -9,7 +9,7 @@ export interface User {
   userType: UserRole;
   createdAt: any; // Firestore serverTimestamp or ISO string
   // For patients logged in via PatientRecord, this might be the recordId or idNumber
-  patientRecordIdForAuth?: string; 
+  patientRecordIdForAuth?: string;
 }
 
 export interface Doctor extends User {
@@ -46,7 +46,7 @@ export interface DoctorPatientMap {
 }
 
 export interface Diagnosis {
-  diagnosisId: string; // Firestore document ID
+  diagnosisId?: string; // Firestore document ID
   patientRecordId: string; // ID of the PatientRecord this diagnosis belongs to
   diagnosisText: string;
   diagnosedBy: string; // Firebase UID of the doctor
@@ -56,7 +56,7 @@ export interface Diagnosis {
 }
 
 export interface Appointment {
-  appointmentId: string; // Firestore document ID
+  appointmentId?: string; // Firestore document ID
   patientAuthUid: string; // Firebase UID of the patient (from User collection)
   patientRecordId?: string; // Optional: Link to the doctor-managed PatientRecord
   doctorId: string; // Firebase UID of the doctor
@@ -69,7 +69,7 @@ export interface Appointment {
 }
 
 export interface PatientDocument {
-  documentId: string; // Firestore document ID
+  documentId?: string; // Firestore document ID
   patientRecordId: string; // ID of the PatientRecord this document belongs to
   documentName: string;
   documentType?: string;
@@ -79,7 +79,7 @@ export interface PatientDocument {
 }
 
 export interface ChatMessage {
-  chatId: string; // Firestore document ID
+  chatId?: string; // Firestore document ID
   patientAuthUid: string; // Firebase UID of the patient (from User collection)
   senderId: string; // Firebase UID (patient or "AI" placeholder)
   senderName?: string; // For display

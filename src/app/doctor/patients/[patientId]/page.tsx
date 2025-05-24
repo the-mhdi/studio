@@ -11,59 +11,38 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/lib/authStore';
-import type { Patient, Diagnosis, PatientDocument, ChatMessage } from '@/lib/types';
+import type { PatientRecord, Diagnosis, PatientDocument, ChatMessage } from '@/lib/types';
 import { DashboardHeader } from '@/components/shared/dashboard-header';
-import { User, Stethoscope, FileText, UploadCloud, PlusCircle, Edit, Trash2, CalendarIcon, MessageSquare, Bot as BotIcon } from 'lucide-react';
+import { User, Stethoscope, FileText, UploadCloud, PlusCircle, Edit, Trash2, CalendarIcon, MessageSquare, Bot as BotIcon, Loader2, AlertTriangle } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
 import Image from 'next/image';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-
-// Mock Data (replace with API calls)
-const MOCK_PATIENTS_DB: Patient[] = [
-  { user_id: 1, username: 'alice_p', email: 'alice.p@example.com', first_name: 'Alice', last_name: 'Smith', user_type: 'patient', created_at: '2023-01-15T10:00:00Z', id_number: 'P001', date_of_birth: '1990-05-20', address: '123 Health St, Wellness City', phone_number: '555-0101' },
-  { user_id: 2, username: 'bob_k', email: 'bob.k@example.com', first_name: 'Bob', last_name: 'Johnson', user_type: 'patient', created_at: '2023-02-20T11:30:00Z', id_number: 'P002', date_of_birth: '1985-11-12', address: '456 Care Ave, Remedy Town', phone_number: '555-0102' },
-];
-
-const MOCK_DIAGNOSES_DB: Diagnosis[] = [
-  { diagnosis_id: 101, patient_id: 1, diagnosis_text: 'Common Cold', diagnosed_by: 1, diagnosis_date: '2023-10-05', created_at: '2023-10-05T10:00:00Z', doctor_name: 'Dr. Emily White' },
-  { diagnosis_id: 102, patient_id: 1, diagnosis_text: 'Mild Seasonal Allergies', diagnosed_by: 1, diagnosis_date: '2024-03-15', created_at: '2024-03-15T11:00:00Z', doctor_name: 'Dr. Emily White' },
-  { diagnosis_id: 201, patient_id: 2, diagnosis_text: 'Sprained Ankle', diagnosed_by: 1, diagnosis_date: '2024-01-20', created_at: '2024-01-20T14:00:00Z', doctor_name: 'Dr. Emily White' },
-];
-
-const MOCK_DOCUMENTS_DB: PatientDocument[] = [
-  { document_id: 301, patient_id: 1, document_name: 'Blood Test Results - Oct 2023.pdf', document_type: 'Lab Result', document_path: '/path/to/doc1.pdf', uploaded_at: '2023-10-06T09:00:00Z', uploaded_by: 1 },
-  { document_id: 302, patient_id: 1, document_name: 'X-Ray Report - Ankle.pdf', document_type: 'Imaging Report', document_path: '/path/to/doc2.pdf', uploaded_at: '2024-01-21T10:00:00Z', uploaded_by: 1 },
-];
-
-const MOCK_CHAT_MESSAGES_DB: ChatMessage[] = [
-    { chat_id: 1, patient_id: 1, sender_id: 1, sender_name: 'Alice Smith', message_text: 'Hello AI, I have a question about my medication.', sent_at: '2024-05-20T10:00:00Z', is_user: true },
-    { chat_id: 2, patient_id: 1, sender_id: 0, sender_name: 'MediMind AI', message_text: 'Hello Alice! I can help with general information. What is your question?', sent_at: '2024-05-20T10:00:30Z', is_user: false },
-    { chat_id: 3, patient_id: 1, sender_id: 1, sender_name: 'Alice Smith', message_text: 'Should I take it with food?', sent_at: '2024-05-20T10:01:00Z', is_user: true },
-    { chat_id: 4, patient_id: 1, sender_id: 0, sender_name: 'MediMind AI', message_text: 'Many medications are best taken with food to avoid stomach upset. However, for specific advice about your prescription, please consult your doctor or pharmacist.', sent_at: '2024-05-20T10:01:45Z', is_user: false },
-    { chat_id: 5, patient_id: 2, sender_id: 2, sender_name: 'Bob Johnson', message_text: 'What are common side effects of ibuprofen?', sent_at: '2024-05-21T14:30:00Z', is_user: true },
-    { chat_id: 6, patient_id: 2, sender_id: 0, sender_name: 'MediMind AI', message_text: 'Common side effects of ibuprofen can include stomach pain, heartburn, nausea, and headache. If you experience severe side effects, please contact your doctor.', sent_at: '2024-05-21T14:30:50Z', is_user: false },
-];
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { db } from '@/lib/firebase';
+import { doc, getDoc, collection, query, where, getDocs, addDoc, deleteDoc, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 
 
 export default function PatientProfilePage() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const patientId = params.patientId ? parseInt(params.patientId as string) : null;
-  
-  const { user: doctorUser } = useAuthStore();
+  const patientRecordId = params.patientId as string; // This is the Firestore document ID of the PatientRecord
+
+  const { userProfile: doctorUserProfile } = useAuthStore();
   const { toast } = useToast();
 
-  const [patient, setPatient] = useState<Patient | null>(null);
+  const [patientRecord, setPatientRecord] = useState<PatientRecord | null>(null);
   const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
   const [documents, setDocuments] = useState<PatientDocument[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const [isEditingDetails, setIsEditingDetails] = useState(false);
-  const [editablePatientDetails, setEditablePatientDetails] = useState<Partial<Patient>>({});
+  const [editablePatientDetails, setEditablePatientDetails] = useState<Partial<PatientRecord>>({});
 
   // Form states for new diagnosis/document
   const [newDiagnosisText, setNewDiagnosisText] = useState('');
@@ -78,16 +57,65 @@ export default function PatientProfilePage() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (patientId) {
-      // MOCK: Fetch patient data
-      const foundPatient = MOCK_PATIENTS_DB.find(p => p.user_id === patientId);
-      setPatient(foundPatient || null);
-      setEditablePatientDetails(foundPatient || {});
-      setDiagnoses(MOCK_DIAGNOSES_DB.filter(d => d.patient_id === patientId));
-      setDocuments(MOCK_DOCUMENTS_DB.filter(doc => doc.patient_id === patientId));
-      setChatMessages(MOCK_CHAT_MESSAGES_DB.filter(chat => chat.patient_id === patientId).sort((a,b) => new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime()));
-    }
-  }, [patientId]);
+    const fetchData = async () => {
+      if (!patientRecordId || !doctorUserProfile) {
+        setError("Patient ID or doctor profile not available.");
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        // Fetch PatientRecord
+        const patientDocRef = doc(db, "patientRecords", patientRecordId);
+        const patientDocSnap = await getDoc(patientDocRef);
+
+        if (!patientDocSnap.exists()) {
+          setError("Patient record not found.");
+          setPatientRecord(null);
+          setIsLoading(false);
+          return;
+        }
+        const recordData = patientDocSnap.data() as Omit<PatientRecord, 'recordId'>;
+        const fetchedPatientRecord = { recordId: patientDocSnap.id, ...recordData };
+        setPatientRecord(fetchedPatientRecord);
+        setEditablePatientDetails(fetchedPatientRecord);
+
+        // Fetch Diagnoses
+        const diagnosesQuery = query(collection(db, "diagnoses"), where("patientRecordId", "==", patientRecordId));
+        const diagnosesSnapshot = await getDocs(diagnosesQuery);
+        const fetchedDiagnoses: Diagnosis[] = diagnosesSnapshot.docs.map(d => ({ diagnosisId: d.id, ...d.data() } as Diagnosis));
+        setDiagnoses(fetchedDiagnoses.sort((a, b) => parseISO(b.diagnosisDate).getTime() - parseISO(a.diagnosisDate).getTime()));
+
+        // Fetch Documents
+        const documentsQuery = query(collection(db, "patientDocuments"), where("patientRecordId", "==", patientRecordId));
+        const documentsSnapshot = await getDocs(documentsQuery);
+        const fetchedDocuments: PatientDocument[] = documentsSnapshot.docs.map(d => ({ documentId: d.id, ...d.data() } as PatientDocument));
+        setDocuments(fetchedDocuments.sort((a,b) => (b.uploadedAt as Timestamp).toMillis() - (a.uploadedAt as Timestamp).toMillis()));
+
+        // Fetch Chat Messages if linkedAuthUid exists
+        if (fetchedPatientRecord.linkedAuthUid) {
+          const chatMessagesQuery = query(collection(db, "chatMessages"), where("patientAuthUid", "==", fetchedPatientRecord.linkedAuthUid));
+          const chatMessagesSnapshot = await getDocs(chatMessagesQuery);
+          const fetchedChatMessages: ChatMessage[] = chatMessagesSnapshot.docs.map(chat => ({ chatId: chat.id, ...chat.data() } as ChatMessage));
+          setChatMessages(fetchedChatMessages.sort((a,b) => (a.sentAt as Timestamp).toMillis() - (b.sentAt as Timestamp).toMillis()));
+        } else {
+          setChatMessages([]); // No linked user, so no chats to show this way
+        }
+
+      } catch (err: any) {
+        console.error("Error fetching patient data:", err);
+        setError(err.message || "Failed to fetch patient data.");
+        setPatientRecord(null);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [patientRecordId, doctorUserProfile]);
+
 
   useEffect(() => {
     if (activeTab === 'chatHistory' && scrollAreaRef.current) {
@@ -98,131 +126,193 @@ export default function PatientProfilePage() {
     }
   }, [chatMessages, activeTab]);
 
-  const handleEditDetailsToggle = () => {
-    if (isEditingDetails && patient) { // Save logic
-        // MOCK: API call to save patient details
-        console.log("Saving patient details (mock): ", editablePatientDetails);
-        setPatient(prev => ({...prev, ...editablePatientDetails} as Patient));
-        toast({ title: "Details Updated", description: `${patient.first_name}'s details saved.`});
-    } else if (patient) {
-        setEditablePatientDetails(patient); // Reset to current patient data on entering edit mode
+  const handleEditDetailsToggle = async () => {
+    if (isEditingDetails && patientRecord) { // Save logic
+      setIsLoading(true);
+      try {
+        const patientDocRef = doc(db, "patientRecords", patientRecord.recordId!);
+        const updateData = { ...editablePatientDetails };
+        // Remove fields that shouldn't be directly updated or are handled by server
+        delete updateData.recordId;
+        delete updateData.doctorId;
+        delete updateData.createdAt;
+        // Ensure initialPassword is not accidentally cleared if not being edited
+        if (!updateData.initialPassword && patientRecord.initialPassword) {
+            updateData.initialPassword = patientRecord.initialPassword;
+        }
+
+
+        await updateDoc(patientDocRef, updateData);
+        setPatientRecord(prev => ({...prev, ...editablePatientDetails} as PatientRecord));
+        toast({ title: "Details Updated", description: `${patientRecord.firstName}'s details saved.`});
+      } catch (e: any) {
+        console.error("Error updating patient details:", e);
+        toast({ title: "Update Failed", description: e.message || "Could not save details.", variant: "destructive"});
+      } finally {
+        setIsLoading(false);
+      }
+    } else if (patientRecord) {
+        setEditablePatientDetails(patientRecord);
     }
     setIsEditingDetails(!isEditingDetails);
   };
-  
+
   const handleDetailChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setEditablePatientDetails(prev => ({...prev, [name]: value}));
   };
 
 
-  const handleAddDiagnosis = (e: FormEvent) => {
+  const handleAddDiagnosis = async (e: FormEvent) => {
     e.preventDefault();
-    if (!patient || !doctorUser || !newDiagnosisDate) return;
+    if (!patientRecord || !doctorUserProfile || !newDiagnosisDate) return;
     setIsAddingDiagnosis(true);
-    const newDiagnosis: Diagnosis = {
-      diagnosis_id: Date.now(), // Mock ID
-      patient_id: patient.user_id,
-      diagnosis_text: newDiagnosisText,
-      diagnosed_by: doctorUser.user_id,
-      doctor_name: `Dr. ${doctorUser.first_name} ${doctorUser.last_name}`,
-      diagnosis_date: format(newDiagnosisDate, 'yyyy-MM-dd'),
-      created_at: new Date().toISOString(),
-    };
-    // MOCK: API call
-    setTimeout(() => {
-      setDiagnoses(prev => [newDiagnosis, ...prev]);
+    try {
+      const diagnosisData: Omit<Diagnosis, 'diagnosisId' | 'createdAt'> = {
+        patientRecordId: patientRecord.recordId!,
+        diagnosisText: newDiagnosisText,
+        diagnosedBy: doctorUserProfile.uid,
+        doctorName: `Dr. ${doctorUserProfile.firstName} ${doctorUserProfile.lastName}`,
+        diagnosisDate: format(newDiagnosisDate, 'yyyy-MM-dd'),
+      };
+      const docRef = await addDoc(collection(db, "diagnoses"), { ...diagnosisData, createdAt: serverTimestamp() });
+      setDiagnoses(prev => [{ ...diagnosisData, diagnosisId: docRef.id, createdAt: new Date().toISOString() }, ...prev]
+        .sort((a, b) => parseISO(b.diagnosisDate).getTime() - parseISO(a.diagnosisDate).getTime()));
       setNewDiagnosisText('');
       setNewDiagnosisDate(new Date());
-      toast({ title: 'Diagnosis Added', description: `New diagnosis recorded for ${patient.first_name}.` });
+      toast({ title: 'Diagnosis Added', description: `New diagnosis recorded for ${patientRecord.firstName}.` });
+    } catch (err: any) {
+      console.error("Error adding diagnosis:", err);
+      toast({ title: "Error Adding Diagnosis", description: err.message || "Could not save diagnosis.", variant: "destructive" });
+    } finally {
       setIsAddingDiagnosis(false);
-    }, 500);
+    }
   };
 
-  const handleDocumentUpload = (e: FormEvent) => {
+  const handleDocumentUpload = async (e: FormEvent) => {
     e.preventDefault();
-    if (!patient || !documentFile || !doctorUser) return;
+    if (!patientRecord || !documentFile || !doctorUserProfile) return;
     setIsUploading(true);
-    const newDocument: PatientDocument = {
-      document_id: Date.now(), // Mock ID
-      patient_id: patient.user_id,
-      document_name: documentName || documentFile.name,
-      document_type: documentType,
-      document_path: `/uploads/mock/${documentFile.name}`, // Mock path
-      uploaded_at: new Date().toISOString(),
-      uploaded_by: doctorUser.user_id,
-    };
-    // MOCK: API call for upload
-     setTimeout(() => {
-      setDocuments(prev => [newDocument, ...prev]);
+    // In a real app: Upload documentFile to Firebase Storage, then save metadata to Firestore
+    // For now, we'll just simulate metadata saving
+    try {
+      const documentData: Omit<PatientDocument, 'documentId' | 'uploadedAt'> = {
+        patientRecordId: patientRecord.recordId!,
+        documentName: documentName || documentFile.name,
+        documentType: documentType,
+        documentPath: `/uploads/mock/${documentFile.name}`, // Mock path, replace with actual Storage path
+        uploadedBy: doctorUserProfile.uid,
+      };
+      const docRef = await addDoc(collection(db, "patientDocuments"), { ...documentData, uploadedAt: serverTimestamp() });
+      setDocuments(prev => [{ ...documentData, documentId: docRef.id, uploadedAt: new Date().toISOString() }, ...prev]
+        .sort((a,b) => (b.uploadedAt as any).toMillis() - (a.uploadedAt as any).toMillis())); // Basic sort for optimism
       setDocumentFile(null);
       setDocumentName('');
       setDocumentType('');
-      toast({ title: 'Document Uploaded', description: `${newDocument.document_name} added.` });
+      toast({ title: 'Document Uploaded', description: `${documentData.documentName} added.` });
+    } catch (err: any) {
+      console.error("Error uploading document:", err);
+      toast({ title: "Error Uploading Document", description: err.message || "Could not save document metadata.", variant: "destructive" });
+    } finally {
       setIsUploading(false);
-    }, 1000);
+    }
   };
-  
-  const handleDeleteDiagnosis = (diagnosisId: number) => {
-    // MOCK: API call
-    setDiagnoses(prev => prev.filter(d => d.diagnosis_id !== diagnosisId));
-    toast({ title: "Diagnosis Deleted", variant: "destructive"});
+
+  const handleDeleteDiagnosis = async (diagnosisId: string) => {
+    try {
+      await deleteDoc(doc(db, "diagnoses", diagnosisId));
+      setDiagnoses(prev => prev.filter(d => d.diagnosisId !== diagnosisId));
+      toast({ title: "Diagnosis Deleted", variant: "destructive"});
+    } catch (err: any) {
+      console.error("Error deleting diagnosis:", err);
+      toast({ title: "Error Deleting Diagnosis", description: err.message || "Could not delete diagnosis.", variant: "destructive" });
+    }
   }
 
-  const handleDeleteDocument = (documentId: number) => {
-     // MOCK: API call
-    setDocuments(prev => prev.filter(d => d.document_id !== documentId));
-    toast({ title: "Document Deleted", variant: "destructive"});
+  const handleDeleteDocument = async (documentId: string) => {
+    try {
+      // In real app, also delete from Firebase Storage
+      await deleteDoc(doc(db, "patientDocuments", documentId));
+      setDocuments(prev => prev.filter(d => d.documentId !== documentId));
+      toast({ title: "Document Deleted", variant: "destructive"});
+    } catch (err: any) {
+      console.error("Error deleting document:", err);
+      toast({ title: "Error Deleting Document", description: err.message || "Could not delete document.", variant: "destructive" });
+    }
   }
 
-
-  if (!patient) {
-    return <div className="text-center py-10">Loading patient data or patient not found...</div>;
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[calc(100vh-10rem)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-lg">Loading patient data...</p>
+      </div>
+    );
   }
+
+  if (error) {
+    return (
+      <div className="text-center py-10">
+        <AlertTriangle className="mx-auto h-12 w-12 text-destructive mb-4" />
+        <h2 className="text-xl font-semibold text-destructive mb-2">Error Loading Patient Data</h2>
+        <p className="text-muted-foreground">{error}</p>
+        <Button onClick={() => window.location.reload()} className="mt-4">Try Again</Button>
+      </div>
+    );
+  }
+
+  if (!patientRecord) {
+    return <div className="text-center py-10 text-muted-foreground">Patient record not found.</div>;
+  }
+
 
   return (
     <div>
       <DashboardHeader
-        title={`${patient.first_name} ${patient.last_name}`}
-        description={`Patient ID: ${patient.id_number} | DOB: ${patient.date_of_birth ? new Date(patient.date_of_birth).toLocaleDateString() : 'N/A'}`}
+        title={`${patientRecord.firstName} ${patientRecord.lastName}`}
+        description={`Patient ID: ${patientRecord.idNumber} | DOB: ${patientRecord.dateOfBirth ? format(parseISO(patientRecord.dateOfBirth), 'MM/dd/yyyy') : 'N/A'}`}
       />
 
       <Tabs defaultValue={activeTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-6"> {/* Updated grid-cols-4 */}
+        <TabsList className="grid w-full grid-cols-4 mb-6">
           <TabsTrigger value="details"><User className="mr-2 h-4 w-4 inline-block"/>Details</TabsTrigger>
           <TabsTrigger value="diagnoses"><Stethoscope className="mr-2 h-4 w-4 inline-block"/>Diagnoses</TabsTrigger>
           <TabsTrigger value="documents"><FileText className="mr-2 h-4 w-4 inline-block"/>Documents</TabsTrigger>
-          <TabsTrigger value="chatHistory"><MessageSquare className="mr-2 h-4 w-4 inline-block"/>AI Chat</TabsTrigger> {/* New Tab */}
+          <TabsTrigger value="chatHistory"><MessageSquare className="mr-2 h-4 w-4 inline-block"/>AI Chat</TabsTrigger>
         </TabsList>
 
         <TabsContent value="details">
           <Card className="shadow-lg">
             <CardHeader className="flex flex-row justify-between items-center">
               <CardTitle>Patient Information</CardTitle>
-              <Button variant="outline" onClick={handleEditDetailsToggle}>
-                <Edit className="mr-2 h-4 w-4"/> {isEditingDetails ? 'Save Details' : 'Edit Details'}
+              <Button variant="outline" onClick={handleEditDetailsToggle} disabled={isLoading}>
+                <Edit className="mr-2 h-4 w-4"/> {isEditingDetails ? (isLoading ? 'Saving...' : 'Save Details') : 'Edit Details'}
               </Button>
             </CardHeader>
             <CardContent className="space-y-4">
                 {isEditingDetails ? (
                     <>
                         <div className="grid grid-cols-2 gap-4">
-                            <div><Label htmlFor="first_name">First Name</Label><Input name="first_name" value={editablePatientDetails.first_name || ''} onChange={handleDetailChange} /></div>
-                            <div><Label htmlFor="last_name">Last Name</Label><Input name="last_name" value={editablePatientDetails.last_name || ''} onChange={handleDetailChange} /></div>
+                            <div><Label htmlFor="firstName">First Name</Label><Input name="firstName" value={editablePatientDetails.firstName || ''} onChange={handleDetailChange} /></div>
+                            <div><Label htmlFor="lastName">Last Name</Label><Input name="lastName" value={editablePatientDetails.lastName || ''} onChange={handleDetailChange} /></div>
                         </div>
                         <div><Label htmlFor="email">Email</Label><Input name="email" type="email" value={editablePatientDetails.email || ''} onChange={handleDetailChange} /></div>
-                        <div><Label htmlFor="phone_number">Phone</Label><Input name="phone_number" type="tel" value={editablePatientDetails.phone_number || ''} onChange={handleDetailChange} /></div>
-                        <div><Label htmlFor="date_of_birth">Date of Birth</Label><Input name="date_of_birth" type="date" value={editablePatientDetails.date_of_birth || ''} onChange={handleDetailChange} /></div>
+                        <div><Label htmlFor="phoneNumber">Phone</Label><Input name="phoneNumber" type="tel" value={editablePatientDetails.phoneNumber || ''} onChange={handleDetailChange} /></div>
+                        <div><Label htmlFor="dateOfBirth">Date of Birth</Label><Input name="dateOfBirth" type="date" value={editablePatientDetails.dateOfBirth || ''} onChange={handleDetailChange} /></div>
                         <div><Label htmlFor="address">Address</Label><Textarea name="address" value={editablePatientDetails.address || ''} onChange={handleDetailChange} /></div>
-                        <div><Label htmlFor="id_number">ID Number</Label><Input name="id_number" value={editablePatientDetails.id_number || ''} onChange={handleDetailChange} /></div>
+                        <div><Label htmlFor="idNumber">ID Number</Label><Input name="idNumber" value={editablePatientDetails.idNumber || ''} onChange={handleDetailChange} /></div>
+                         <div><Label htmlFor="patientSpecificPrompts">Patient Specific Prompts</Label><Textarea name="patientSpecificPrompts" value={editablePatientDetails.patientSpecificPrompts || ''} onChange={handleDetailChange} /></div>
+                         <div><Label htmlFor="linkedAuthUid">Linked Patient Auth UID (Read-only)</Label><Input name="linkedAuthUid" value={editablePatientDetails.linkedAuthUid || ''} readOnly disabled /></div>
                     </>
                 ) : (
                     <>
-                        <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
-                            <p><strong>Email:</strong> {patient.email}</p>
-                            <p><strong>Phone:</strong> {patient.phone_number || 'N/A'}</p>
-                            <p><strong>Address:</strong> {patient.address || 'N/A'}</p>
-                            <p><strong>Joined:</strong> {new Date(patient.created_at).toLocaleDateString()}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                            <p><strong>Email:</strong> {patientRecord.email || 'N/A'}</p>
+                            <p><strong>Phone:</strong> {patientRecord.phoneNumber || 'N/A'}</p>
+                            <p><strong>Address:</strong> {patientRecord.address || 'N/A'}</p>
+                             <p><strong>Joined (Record Created):</strong> {patientRecord.createdAt instanceof Timestamp ? patientRecord.createdAt.toDate().toLocaleDateString() : 'N/A'}</p>
+                            <p><strong>Patient Specific Prompts:</strong> {patientRecord.patientSpecificPrompts || 'N/A'}</p>
+                            <p><strong>Linked Patient Auth UID:</strong> {patientRecord.linkedAuthUid || 'Not Linked'}</p>
                         </div>
                     </>
                 )}
@@ -240,7 +330,7 @@ export default function PatientProfilePage() {
                 <h3 className="text-lg font-semibold">Add New Diagnosis</h3>
                 <div>
                   <Label htmlFor="newDiagnosisText">Diagnosis Details *</Label>
-                  <Textarea id="newDiagnosisText" value={newDiagnosisText} onChange={(e) => setNewDiagnosisText(e.target.value)} required rows={3} placeholder="Enter diagnosis information..."/>
+                  <Textarea id="newDiagnosisText" value={newDiagnosisText} onChange={(e) => setNewDiagnosisText(e.target.value)} required rows={3} placeholder="Enter diagnosis information..." disabled={isAddingDiagnosis}/>
                 </div>
                 <div>
                   <Label htmlFor="newDiagnosisDate">Diagnosis Date *</Label>
@@ -252,6 +342,7 @@ export default function PatientProfilePage() {
                             "w-full justify-start text-left font-normal",
                             !newDiagnosisDate && "text-muted-foreground"
                             )}
+                            disabled={isAddingDiagnosis}
                         >
                             <CalendarIcon className="mr-2 h-4 w-4" />
                             {newDiagnosisDate ? format(newDiagnosisDate, "PPP") : <span>Pick a date</span>}
@@ -269,18 +360,18 @@ export default function PatientProfilePage() {
                 </div>
                 <Button type="submit" disabled={isAddingDiagnosis}><PlusCircle className="mr-2 h-4 w-4"/> {isAddingDiagnosis ? 'Adding...' : 'Add Diagnosis'}</Button>
               </form>
-              {diagnoses.length === 0 ? <p>No diagnoses recorded.</p> : (
+              {diagnoses.length === 0 ? <p className="text-center text-muted-foreground py-4">No diagnoses recorded.</p> : (
                 <ul className="space-y-3">
                   {diagnoses.map(d => (
-                    <li key={d.diagnosis_id} className="p-3 border rounded-md bg-card hover:bg-muted/50 transition-colors">
+                    <li key={d.diagnosisId} className="p-3 border rounded-md bg-card hover:bg-muted/50 transition-colors">
                       <div className="flex justify-between items-start">
-                        <p className="font-medium">{d.diagnosis_text}</p>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 h-8 w-8" onClick={() => handleDeleteDiagnosis(d.diagnosis_id)}>
+                        <p className="font-medium">{d.diagnosisText}</p>
+                        <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 h-8 w-8" onClick={() => handleDeleteDiagnosis(d.diagnosisId!)}>
                             <Trash2 className="h-4 w-4"/>
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Diagnosed by {d.doctor_name || `Dr. ID ${d.diagnosed_by}`} on {new Date(d.diagnosis_date).toLocaleDateString()}
+                        Diagnosed by {d.doctorName || `Dr. ID ${d.diagnosedBy}`} on {d.diagnosisDate ? format(parseISO(d.diagnosisDate), 'MMMM d, yyyy') : 'N/A'}
                       </p>
                     </li>
                   ))}
@@ -300,29 +391,29 @@ export default function PatientProfilePage() {
                 <h3 className="text-lg font-semibold">Upload New Document</h3>
                 <div>
                   <Label htmlFor="documentFile">Choose File *</Label>
-                  <Input id="documentFile" type="file" onChange={(e) => setDocumentFile(e.target.files ? e.target.files[0] : null)} required />
+                  <Input id="documentFile" type="file" onChange={(e) => setDocumentFile(e.target.files ? e.target.files[0] : null)} required disabled={isUploading}/>
                 </div>
                 <div>
                   <Label htmlFor="documentName">Document Name (Optional)</Label>
-                  <Input id="documentName" value={documentName} onChange={(e) => setDocumentName(e.target.value)} placeholder="If blank, filename will be used"/>
+                  <Input id="documentName" value={documentName} onChange={(e) => setDocumentName(e.target.value)} placeholder="If blank, filename will be used" disabled={isUploading}/>
                 </div>
                 <div>
                   <Label htmlFor="documentType">Document Type (Optional)</Label>
-                  <Input id="documentType" value={documentType} onChange={(e) => setDocumentType(e.target.value)} placeholder="e.g., Lab Result, Prescription, Imaging"/>
+                  <Input id="documentType" value={documentType} onChange={(e) => setDocumentType(e.target.value)} placeholder="e.g., Lab Result, Prescription" disabled={isUploading}/>
                 </div>
                 <Button type="submit" disabled={isUploading || !documentFile}><UploadCloud className="mr-2 h-4 w-4"/>{isUploading ? 'Uploading...' : 'Upload Document'}</Button>
               </form>
-              {documents.length === 0 ? <p>No documents uploaded for this patient.</p> : (
+              {documents.length === 0 ? <p className="text-center text-muted-foreground py-4">No documents uploaded for this patient.</p> : (
                  <ul className="space-y-3">
                   {documents.map(doc => (
-                    <li key={doc.document_id} className="p-3 border rounded-md bg-card hover:bg-muted/50 transition-colors flex justify-between items-center">
+                    <li key={doc.documentId} className="p-3 border rounded-md bg-card hover:bg-muted/50 transition-colors flex justify-between items-center">
                       <div>
-                        <p className="font-medium text-primary hover:underline cursor-pointer" onClick={() => alert(`Mock download: ${doc.document_name}`)}>{doc.document_name}</p>
+                        <p className="font-medium text-primary hover:underline cursor-pointer" onClick={() => alert(`Mock download/view: ${doc.document_name} (Path: ${doc.document_path})`)}>{doc.document_name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Type: {doc.document_type || 'N/A'} | Uploaded: {new Date(doc.uploaded_at).toLocaleDateString()}
+                          Type: {doc.documentType || 'N/A'} | Uploaded: {doc.uploadedAt instanceof Timestamp ? doc.uploadedAt.toDate().toLocaleDateString() : 'N/A'}
                         </p>
                       </div>
-                       <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 h-8 w-8" onClick={() => handleDeleteDocument(doc.document_id)}>
+                       <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 h-8 w-8" onClick={() => handleDeleteDocument(doc.documentId!)}>
                             <Trash2 className="h-4 w-4"/>
                         </Button>
                     </li>
@@ -337,26 +428,26 @@ export default function PatientProfilePage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>AI Assistant Chat History</CardTitle>
-              <CardDescription>Conversation between {patient.first_name} {patient.last_name} and the MediMind AI.</CardDescription>
+              <CardDescription>Conversation between {patientRecord.firstName} {patientRecord.lastName} and the MediMind AI.</CardDescription>
             </CardHeader>
             <CardContent>
               {chatMessages.length === 0 ? (
                 <div className="text-center py-10 text-muted-foreground">
                   <MessageSquare size={48} className="mx-auto mb-4 opacity-50" />
-                  No chat history found for this patient.
+                  {patientRecord.linkedAuthUid ? "No chat history found for this patient." : "Patient record is not linked to an authenticated patient account. Chat history cannot be displayed."}
                 </div>
               ) : (
                 <ScrollArea className="h-[500px] w-full p-4 border rounded-md bg-muted/20" ref={scrollAreaRef}>
                   <div className="space-y-6">
                     {chatMessages.map((message) => (
                       <div
-                        key={message.chat_id}
+                        key={message.chatId}
                         className={cn(
                           "flex items-end gap-3",
-                          message.is_user ? "justify-end" : "justify-start" // is_user means patient sent it
+                          message.isUser ? "justify-end" : "justify-start"
                         )}
                       >
-                        {!message.is_user && ( // AI message
+                        {!message.isUser && (
                           <Avatar className="h-10 w-10">
                             <AvatarFallback>
                               <BotIcon size={24} />
@@ -366,20 +457,20 @@ export default function PatientProfilePage() {
                         <div
                           className={cn(
                             "max-w-[70%] rounded-xl px-4 py-3 shadow",
-                            message.is_user // Patient's message
+                            message.isUser
                               ? "bg-primary text-primary-foreground"
-                              : "bg-card text-card-foreground border" // AI's message
+                              : "bg-card text-card-foreground border"
                           )}
                         >
                           <p className="text-sm font-medium mb-1">
-                            {message.is_user ? patient.first_name : message.sender_name || "MediMind AI"}
+                            {message.isUser ? patientRecord.firstName : message.senderName || "MediMind AI"}
                           </p>
-                          <p className="text-sm whitespace-pre-wrap">{message.message_text}</p>
+                          <p className="text-sm whitespace-pre-wrap">{message.messageText}</p>
                           <p className="mt-1 text-xs opacity-70 text-right">
-                            {format(new Date(message.sent_at), "MMM d, HH:mm")}
+                            {message.sentAt instanceof Timestamp ? format(message.sentAt.toDate(), "MMM d, HH:mm") : 'N/A'}
                           </p>
                         </div>
-                        {message.is_user && ( // Patient message
+                        {message.isUser && (
                            <Avatar className="h-10 w-10">
                              <AvatarFallback>
                               <User size={24} />
@@ -402,11 +493,11 @@ export default function PatientProfilePage() {
         </CardHeader>
         <CardContent>
             <div className="flex items-center gap-4">
-                <Image 
-                  src={`https://placehold.co/150x150.png?text=${patient.first_name[0]}${patient.last_name[0]}`} 
-                  alt={`${patient.first_name} ${patient.last_name}`} 
-                  width={100} 
-                  height={100} 
+                <Image
+                  src={`https://placehold.co/100x100.png?text=${patientRecord.firstName[0]}${patientRecord.lastName[0]}`}
+                  alt={`${patientRecord.firstName} ${patientRecord.lastName}`}
+                  width={100}
+                  height={100}
                   className="rounded-full border-2 border-primary"
                   data-ai-hint="profile avatar"
                 />
@@ -422,4 +513,3 @@ export default function PatientProfilePage() {
     </div>
   );
 }
-
