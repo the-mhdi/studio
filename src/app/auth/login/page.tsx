@@ -6,107 +6,81 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/lib/authStore";
-import type { MockUser } from "@/lib/types";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useState, type FormEvent, useEffect } from "react";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
-
-// Simple mock patient store (in a real app, this would be a database)
-const mockPatientCredentials: Record<string, string> = {
-  "P001": "password123",
-  "P002": "testpass",
-};
+import { auth, db } from '@/lib/firebase';
+import { signInWithEmailAndPassword, type User as FirebaseUser } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import type { User } from '@/lib/types';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuthStore();
+  const { login: authLogin, isAuthenticated, userProfile, isLoading: authIsLoading } = useAuthStore();
   const { toast } = useToast();
-  const [emailOrId, setEmailOrId] = useState('');
+  
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsLoading(true);
-
-    // Mock authentication logic
-    setTimeout(() => {
-      let userRole: 'doctor' | 'patient' | null = null;
-      let mockUser: MockUser | null = null;
-      let loginSuccessful = false;
-
-      // Check if it's a patient ID login (e.g., "P001")
-      // A more robust check might involve a regex like /^[Pp]\d+$/
-      if (emailOrId.toUpperCase().startsWith('P') && !emailOrId.includes('@')) {
-        // For simplicity, assume any password is correct for a known mock patient ID
-        // Or, check against mockPatientCredentials if populated
-        if (mockPatientCredentials[emailOrId.toUpperCase()] === password) {
-            userRole = 'patient';
-            mockUser = {
-                user_id: Date.now(), // Mock ID, could be derived from patient ID
-                username: emailOrId.toUpperCase(),
-                email: `${emailOrId.toLowerCase()}@example.com`, // Mock email
-                first_name: 'Patient',
-                last_name: emailOrId.toUpperCase(), // Use ID as last name for mock
-                user_type: 'patient',
-                created_at: new Date().toISOString(),
-            };
-            loginSuccessful = true;
-        } else if (Object.keys(mockPatientCredentials).includes(emailOrId.toUpperCase())) {
-            // ID exists, but password wrong
-             toast({
-                title: "Login Failed",
-                description: "Incorrect password for Patient ID.",
-                variant: "destructive",
-            });
-            setIsLoading(false);
-            return;
-        }
-         // If ID not in mock store, it will fall through to general error
-      } else if (emailOrId.startsWith('doctor@')) {
-        userRole = 'doctor';
-        // Simulate password check for doctor
-        loginSuccessful = true; // Assume any password is fine for mock doctor
-      } else if (emailOrId.startsWith('patient@')) {
-        userRole = 'patient';
-        // Simulate password check for patient email
-        loginSuccessful = true; // Assume any password is fine for mock patient email
+  useEffect(() => {
+    if (!authIsLoading && isAuthenticated && userProfile) {
+      if (userProfile.userType === 'doctor') {
+        router.push('/doctor/dashboard');
+      } else {
+        router.push('/patient/dashboard');
       }
+    }
+  }, [isAuthenticated, userProfile, router, authIsLoading]);
 
-      if (loginSuccessful && userRole) {
-        if (!mockUser) { // Create mockUser if not already created (for email logins)
-            mockUser = {
-                user_id: Date.now(),
-                username: emailOrId.split('@')[0],
-                email: emailOrId,
-                first_name: userRole === 'doctor' ? 'Doctor' : 'Patient',
-                last_name: 'User',
-                user_type: userRole,
-                created_at: new Date().toISOString(),
-            };
-        }
-        login(mockUser);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+
+      // Fetch user profile from Firestore
+      const userDocRef = doc(db, "users", firebaseUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+
+      if (userDocSnap.exists()) {
+        const userProfileData = userDocSnap.data() as User;
+        authLogin(firebaseUser, userProfileData); // Update auth store
+
         toast({
           title: "Login Successful",
-          description: `Welcome back, ${mockUser.first_name}! Redirecting...`,
+          description: `Welcome back, ${userProfileData.firstName}! Redirecting...`,
         });
 
-        if (mockUser.user_type === 'doctor') {
-          router.push('/doctor/dashboard');
-        } else {
-          router.push('/patient/dashboard');
-        }
+        // Redirect based on user type is now handled by useEffect
       } else {
-         toast({
-          title: "Login Failed",
-          description: "Invalid credentials. Use 'doctor@', 'patient@', or a valid Patient ID and password.",
-          variant: "destructive",
-        });
+        // This case should ideally not happen if profile is created on signup
+        throw new Error("User profile not found.");
       }
-      setIsLoading(false);
-    }, 1000);
+    } catch (error: any) {
+      console.error("Login error:", error);
+      toast({
+        title: "Login Failed",
+        description: error.message || "Invalid email or password. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  if (authIsLoading) {
+     return <div className="flex min-h-screen items-center justify-center"><p>Loading authentication state...</p></div>;
+  }
+  
+  if (isAuthenticated) {
+    // Already logged in, useEffect will redirect
+    return <div className="flex min-h-screen items-center justify-center"><p>Redirecting to your dashboard...</p></div>;
+  }
 
   return (
     <Card className="w-full shadow-xl">
@@ -117,15 +91,15 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit}>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="emailOrId">Email or Patient ID</Label>
+            <Label htmlFor="email">Email</Label>
             <Input 
-              id="emailOrId" 
-              type="text" 
-              placeholder="e.g., doctor@example.com or P001" 
+              id="email" 
+              type="email" 
+              placeholder="your.email@example.com" 
               required 
-              value={emailOrId}
-              onChange={(e) => setEmailOrId(e.target.value)}
-              disabled={isLoading}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={isSubmitting}
             />
           </div>
           <div className="space-y-2">
@@ -137,13 +111,13 @@ export default function LoginPage() {
               required 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              disabled={isLoading}
+              disabled={isSubmitting}
             />
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? 'Logging in...' : 'Login'}
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? 'Logging in...' : 'Login'}
           </Button>
           <p className="text-sm text-muted-foreground">
             Don&apos;t have an account?{' '}

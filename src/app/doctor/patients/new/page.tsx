@@ -10,20 +10,21 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/lib/authStore';
-// import type { Patient } from '@/lib/types'; // For creating a new patient object
 import { DashboardHeader } from '@/components/shared/dashboard-header';
 import { UserPlus } from 'lucide-react';
+import { db } from '@/lib/firebase'; // Import Firestore instance
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import type { PatientRecord } from '@/lib/types';
 
 export default function AddNewPatientPage() {
   const router = useRouter();
-  const { user } = useAuthStore(); // Doctor user
+  const { userProfile } = useAuthStore(); 
   const { toast } = useToast();
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [idNumber, setIdNumber] = useState(''); // National ID or patient specific ID
-  const [password, setPassword] = useState(''); // New password field
+  const [email, setEmail] = useState(''); // Email for contact/linking, not for login creation here
+  const [idNumber, setIdNumber] = useState(''); // Patient specific ID (e.g., P001)
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [address, setAddress] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
@@ -33,44 +34,51 @@ export default function AddNewPatientPage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!user || user.user_type !== 'doctor') {
+    if (!userProfile || userProfile.userType !== 'doctor') {
       toast({ title: 'Error', description: 'Unauthorized action.', variant: 'destructive' });
       return;
     }
     setIsLoading(true);
 
-    // Mock creating new patient. In a real app, this would be an API call.
-    // const newPatientData: Omit<Patient, 'user_id' | 'username' | 'user_type' | 'created_at'> & { dedicated_prompts?: string, password_hash: string } = {
-    //   first_name: firstName,
-    //   last_name: lastName,
-    //   email,
-    //   id_number: idNumber,
-    //   date_of_birth: dateOfBirth,
-    //   address,
-    //   phone_number: phoneNumber,
-    //   dedicated_prompts: patientSpecificPrompts,
-    //   password_hash: // hash the password here
-    // };
+    const newPatientRecordData: Omit<PatientRecord, 'recordId' | 'createdAt'> = {
+      doctorId: userProfile.uid,
+      firstName,
+      lastName,
+      email: email || undefined, // Store if provided
+      idNumber,
+      dateOfBirth: dateOfBirth || undefined,
+      address: address || undefined,
+      phoneNumber: phoneNumber || undefined,
+      patientSpecificPrompts: patientSpecificPrompts || undefined,
+    };
 
-    // Simulate API call
-    setTimeout(() => {
-      console.log('New patient data submitted (mock):', { firstName, lastName, email, idNumber, password, dateOfBirth, address, phoneNumber, patientSpecificPrompts });
+    try {
+      const docRef = await addDoc(collection(db, "patientRecords"), {
+        ...newPatientRecordData,
+        createdAt: serverTimestamp(), // Use Firestore server timestamp
+      });
+
       toast({
         title: 'Patient Profile Created',
-        description: `Profile for ${firstName} ${lastName} has been successfully created. They can now log in with ID: ${idNumber}.`,
+        description: `Profile for ${firstName} ${lastName} (ID: ${idNumber}) has been successfully created in Firestore.`,
       });
-      // Redirect to patient list or the new patient's profile page
-      // Ideally, store the new patient (including a hashed password and ID) in a mock DB for the login page to check against.
-      // For simplicity, this example doesn't implement a shared mock DB.
       router.push('/doctor/patients'); 
+    } catch (error) {
+      console.error("Error adding patient record: ", error);
+      toast({
+        title: 'Error Creating Profile',
+        description: 'Could not save patient profile to the database. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (
     <div>
       <DashboardHeader
-        title="Add New Patient Profile"
+        title="Add New Patient Record"
         description="Enter the details for the new patient."
       />
 
@@ -79,7 +87,7 @@ export default function AddNewPatientPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><UserPlus className="h-6 w-6 text-primary"/>Patient Information</CardTitle>
             <CardDescription>
-              All fields marked with * are required. Ensure data accuracy.
+              Fields marked with * are required. This creates a patient record, not a login account.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -94,20 +102,15 @@ export default function AddNewPatientPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email Address *</Label>
-              <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={isLoading} placeholder="e.g., john.doe@example.com"/>
-            </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="idNumber">Patient ID *</Label>
-                <Input id="idNumber" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} required disabled={isLoading} placeholder="e.g., P001 (will be used for login)"/>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Set Password *</Label>
-                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={isLoading} placeholder="Min. 8 characters"/>
-              </div>
+                <div className="space-y-2">
+                    <Label htmlFor="idNumber">Patient ID *</Label>
+                    <Input id="idNumber" value={idNumber} onChange={(e) => setIdNumber(e.target.value)} required disabled={isLoading} placeholder="e.g., P001"/>
+                </div>
+                 <div className="space-y-2">
+                    <Label htmlFor="email">Email Address (Optional)</Label>
+                    <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={isLoading} placeholder="e.g., john.doe@example.com"/>
+                </div>
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -143,7 +146,7 @@ export default function AddNewPatientPage() {
           </CardContent>
           <CardFooter>
             <Button type="submit" disabled={isLoading} size="lg">
-              {isLoading ? 'Creating Profile...' : 'Create Patient Profile'}
+              {isLoading ? 'Creating Record...' : 'Create Patient Record'}
             </Button>
           </CardFooter>
         </Card>

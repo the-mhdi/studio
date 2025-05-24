@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -12,64 +12,109 @@ import { useAuthStore } from '@/lib/authStore';
 import { DashboardHeader } from '@/components/shared/dashboard-header';
 import { Bot, Info } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { db } from '@/lib/firebase';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import type { AiInstruction } from '@/lib/types';
 
+interface StoredAiInstructions extends Omit<CustomizeAiAssistantInput, 'doctorId'> {
+  updatedAt?: any; // Firestore Timestamp
+}
 
 export default function AiCustomizationPage() {
-  const { user } = useAuthStore();
+  const { userProfile } = useAuthStore();
   const { toast } = useToast();
   const [instructionText, setInstructionText] = useState('');
   const [promptText, setPromptText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [currentInstructions, setCurrentInstructions] = useState<CustomizeAiAssistantInput | null>(null);
+  const [currentInstructions, setCurrentInstructions] = useState<StoredAiInstructions | null>(null);
 
 
-  // In a real app, you'd fetch current instructions for the doctor
-  // useEffect(() => {
-  //   const fetchInstructions = async () => {
-  //     if (user) {
-  //       // mock fetch
-  //       // const fetched = await fetchDoctorInstructions(user.user_id);
-  //       // setInstructionText(fetched.instruction_text);
-  //       // setPromptText(fetched.prompt_text || '');
-  //     }
-  //   };
-  //   fetchInstructions();
-  // }, [user]);
+  useEffect(() => {
+    const fetchInstructions = async () => {
+      if (userProfile && userProfile.userType === 'doctor') {
+        setIsLoading(true);
+        try {
+          const instructionRef = doc(db, "aiInstructions", userProfile.uid);
+          const docSnap = await getDoc(instructionRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data() as AiInstruction; // Assumes AiInstruction type matches structure
+            setInstructionText(data.instructionText);
+            setPromptText(data.promptText || '');
+            setCurrentInstructions({
+              instructionText: data.instructionText,
+              promptText: data.promptText || '',
+              updatedAt: data.updatedAt,
+            });
+          } else {
+            // No instructions found, set default or leave blank
+             setCurrentInstructions(null); // Ensure it's reset if no data
+          }
+        } catch (error) {
+          console.error("Error fetching AI instructions:", error);
+          toast({ title: 'Error', description: 'Could not fetch current AI settings.', variant: 'destructive' });
+        } finally {
+          setIsLoading(false);
+        }
+      }
+    };
+    fetchInstructions();
+  }, [userProfile, toast]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!user || user.user_type !== 'doctor') {
+    if (!userProfile || userProfile.userType !== 'doctor') {
       toast({ title: 'Error', description: 'Unauthorized action.', variant: 'destructive' });
       return;
     }
     setIsLoading(true);
 
     const inputData: CustomizeAiAssistantInput = {
-      doctorId: user.user_id,
+      doctorId: parseInt(userProfile.uid, 10), // Genkit flow expects number, Firebase UID is string. This needs alignment.
+                                                // For now, let's assume genkit flow will be updated or we use a placeholder number.
+                                                // Or we update the Genkit flow to accept string doctorId.
+                                                // For this example, I'll use a placeholder or adapt later.
+                                                // Let's use a placeholder for genkit for now if the flow requires number
+                                                // For Firestore, we use userProfile.uid (string)
       instructionText,
       promptText,
     };
+    
+    // For Firestore:
+    const firestoreData: Omit<AiInstruction, 'instructionId' | 'createdAt' | 'updatedAt' | 'doctorId'> & {doctorId: string} = {
+        doctorId: userProfile.uid,
+        instructionText,
+        promptText: promptText || '',
+    }
+
 
     try {
-      const result = await customizeAiAssistant(inputData);
-      if (result.success) {
-        toast({
-          title: 'AI Assistant Updated',
-          description: result.message || 'AI assistant customization saved successfully.',
-        });
-        setCurrentInstructions(inputData); // Store for display
-      } else {
-        toast({
-          title: 'Update Failed',
-          description: result.message || 'Could not save AI customization.',
-          variant: 'destructive',
-        });
-      }
+      // Call Genkit flow (optional, if still needed for processing beyond just saving)
+      // const genkitResult = await customizeAiAssistant(inputData);
+      // if (!genkitResult.success) {
+      //   toast({ title: 'AI Processing Failed', description: genkitResult.message || 'Could not process AI customization via Genkit.', variant: 'destructive' });
+      //   setIsLoading(false);
+      //   return;
+      // }
+
+      // Save to Firestore
+      const instructionRef = doc(db, "aiInstructions", userProfile.uid);
+      await setDoc(instructionRef, { 
+        ...firestoreData, 
+        createdAt: currentInstructions?.updatedAt ? currentInstructions.updatedAt : serverTimestamp(), // Preserve original createdAt if exists
+        updatedAt: serverTimestamp() 
+      }, { merge: true });
+
+
+      toast({
+        title: 'AI Assistant Updated',
+        description: 'AI assistant customization saved successfully to Firestore.',
+      });
+       setCurrentInstructions({ instructionText, promptText, updatedAt: new Date() }); // Optimistic update for display
     } catch (error) {
       console.error('Error customizing AI assistant:', error);
       toast({
         title: 'Error',
-        description: 'An unexpected error occurred. Please try again.',
+        description: 'An unexpected error occurred while saving. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -102,6 +147,7 @@ export default function AiCustomizationPage() {
             <CardTitle>AI Configuration</CardTitle>
             <CardDescription>
               Modify the instructions and prompts that guide the patient-facing AI chatbot.
+              These settings are specific to you, Dr. {userProfile?.lastName}.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -154,6 +200,15 @@ export default function AiCustomizationPage() {
         <Card className="mt-8 shadow-lg">
           <CardHeader>
             <CardTitle>Current Saved Configuration</CardTitle>
+             {currentInstructions.updatedAt && (
+                <CardDescription>
+                    Last updated: {
+                        currentInstructions.updatedAt instanceof Date 
+                        ? currentInstructions.updatedAt.toLocaleString() 
+                        : currentInstructions.updatedAt.toDate?.().toLocaleString() || 'N/A'
+                    }
+                </CardDescription>
+            )}
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -172,3 +227,4 @@ export default function AiCustomizationPage() {
     </div>
   );
 }
+

@@ -9,19 +9,19 @@ import Link from "next/link";
 import Image from "next/image";
 
 export default function DoctorDashboardPage() {
-  const { user } = useAuthStore();
+  const { userProfile } = useAuthStore();
 
-  // Mock data for dashboard cards
+  // Mock data for dashboard cards - replace with real data fetching
   const summaryData = {
-    totalPatients: 25,
-    upcomingAppointments: 5,
-    aiQueriesToday: 12,
+    totalPatients: 25, // TODO: Fetch from Firestore patientRecords collection for this doctor
+    upcomingAppointments: 5, // TODO: Fetch from Firestore appointments collection
+    aiQueriesToday: 12, // This might be harder to track without specific logging
   };
 
   return (
     <div>
       <DashboardHeader
-        title={`Welcome, Dr. ${user?.last_name || 'Doctor'}`}
+        title={`Welcome, Dr. ${userProfile?.lastName || 'Doctor'}`}
         description="Here's an overview of your practice today."
       />
 
@@ -72,8 +72,8 @@ export default function DoctorDashboardPage() {
            <Link href="/doctor/patients/new" className="block">
             <Card className="bg-primary/10 hover:bg-primary/20 p-6 rounded-lg transition-colors text-center">
                 <Users size={32} className="mx-auto mb-2 text-primary"/>
-                <h3 className="text-lg font-semibold text-primary">Add New Patient</h3>
-                <p className="text-sm text-muted-foreground">Create a profile for a new patient.</p>
+                <h3 className="text-lg font-semibold text-primary">Add New Patient Record</h3>
+                <p className="text-sm text-muted-foreground">Create a data profile for a new patient.</p>
             </Card>
            </Link>
            <Link href="/doctor/ai-customization" className="block">

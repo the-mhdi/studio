@@ -1,47 +1,99 @@
+
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { MockUser, UserRole } from '@/lib/types';
+import type { User as FirebaseUser } from 'firebase/auth';
+import { auth, db } from '@/lib/firebase'; // Assuming firebase.ts is in src/lib
+import { onAuthStateChanged, signOut as firebaseSignOut } from 'firebase/auth';
+import { doc, getDoc, type DocumentData } from 'firebase/firestore';
+import type { User, UserRole } from '@/lib/types';
 
 interface AuthState {
-  user: MockUser | null;
+  authUser: FirebaseUser | null; // Raw Firebase auth user
+  userProfile: User | null; // User profile from Firestore
   isAuthenticated: boolean;
-  login: (user: MockUser) => void;
-  logout: () => void;
-  setUserRole: (role: UserRole) => void; // For signup simulation
+  isLoading: boolean; // To handle async auth state loading
+  login: (authUser: FirebaseUser, userProfile: User) => void;
+  logout: () => Promise<void>;
+  setAuthUser: (authUser: FirebaseUser | null) => void;
+  setUserProfile: (userProfile: User | null) => void;
+  setIsLoading: (loading: boolean) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
-      user: null,
+      authUser: null,
+      userProfile: null,
       isAuthenticated: false,
-      login: (user) => set({ user, isAuthenticated: true }),
-      logout: () => set({ user: null, isAuthenticated: false }),
-      setUserRole: (role) => { // Simplified: assumes a user object exists or creates a partial one
-        const currentUser = get().user;
-        if (currentUser) {
-          set({ user: { ...currentUser, user_type: role } });
-        } else {
-          // This case is for initial role selection during signup before full user object is "created"
-          // In a real app, signup would create the full user object.
-          set({ 
-            user: { 
-              user_id: Date.now(), // mock id
-              username: "tempUser",
-              email: "temp@example.com",
-              first_name: "Temp",
-              last_name: "User",
-              user_type: role,
-              created_at: new Date().toISOString(),
-            }, 
-            isAuthenticated: false // Not fully authenticated until signup completion
-          });
+      isLoading: true, // Start as true until auth state is determined
+      
+      login: (authUser, userProfile) => set({ authUser, userProfile, isAuthenticated: true, isLoading: false }),
+      
+      logout: async () => {
+        try {
+          await firebaseSignOut(auth);
+          set({ authUser: null, userProfile: null, isAuthenticated: false, isLoading: false });
+        } catch (error) {
+          console.error("Error signing out: ", error);
+          // Optionally, set isLoading to false even on error, or handle error state
+          set({ isLoading: false });
         }
-      }
+      },
+      
+      setAuthUser: (authUser) => set({ authUser }),
+      setUserProfile: (userProfile) => set({ userProfile }),
+      setIsLoading: (loading) => set({ isLoading: loading }),
     }),
     {
-      name: 'medimind-auth-storage', // name of the item in the storage (must be unique)
-      storage: createJSONStorage(() => localStorage), // (optional) by default, 'localStorage' is used
+      name: 'medimind-auth-storage-v2',
+      storage: createJSONStorage(() => localStorage),
+      // Only persist a subset of the state if needed, or handle hydration carefully
+      // For example, authUser (FirebaseUser object) might not be ideal to persist directly due to its methods and potential size.
+      // It's often better to re-establish authUser on app load via onAuthStateChanged.
+      // For this iteration, we'll persist it but this is a point of refinement.
+      partialize: (state) => ({
+        // Persist only userProfile and isAuthenticated, authUser will be rehydrated by onAuthStateChanged
+        userProfile: state.userProfile,
+        isAuthenticated: state.isAuthenticated,
+      }),
     }
   )
 );
+
+// Listen to Firebase Auth state changes
+// This should be called once when the app initializes, e.g., in a root layout or provider.
+let unsubscribeAuth: (() => void) | null = null;
+
+export function initializeAuthListener() {
+  if (unsubscribeAuth) {
+    // console.log("Auth listener already initialized.");
+    return unsubscribeAuth; // Return existing unsubscriber if called multiple times
+  }
+  
+  useAuthStore.getState().setIsLoading(true);
+
+  unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+    if (firebaseUser) {
+      // User is signed in
+      const userDocRef = doc(db, "users", firebaseUser.uid);
+      const userDocSnap = await getDoc(userDocRef);
+      if (userDocSnap.exists()) {
+        const userProfileData = userDocSnap.data() as User; // Cast to your User type
+        useAuthStore.getState().login(firebaseUser, userProfileData);
+      } else {
+        // This case should ideally not happen if user profile is created on signup.
+        // Handle missing profile, e.g., log out user or redirect to profile creation.
+        console.error("User profile not found in Firestore for UID:", firebaseUser.uid);
+        await firebaseSignOut(auth); // Log out if profile is missing
+        useAuthStore.getState().setAuthUser(null);
+        useAuthSt<ctrl62>     <p className="text-sm text-muted-foreground">
+            Already have an account?{' '}
+            <Link href="/auth/login" className="font-medium text-primary hover:underline">
+              Login
+            </Link>
+          </p>
+        </CardFooter>
+      </form>
+    </Card>
+  );
+}

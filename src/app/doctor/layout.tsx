@@ -17,16 +17,19 @@ const doctorNavItems: NavItem[] = [
 
 export default function DoctorLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, userProfile, isLoading } = useAuthStore();
 
   useEffect(() => {
-    if (!isAuthenticated || user?.user_type !== 'doctor') {
-      router.push('/auth/login');
+    if (!isLoading) {
+      if (!isAuthenticated || userProfile?.userType !== 'doctor') {
+        router.push('/auth/login');
+      }
     }
-  }, [isAuthenticated, user, router]);
+  }, [isAuthenticated, userProfile, router, isLoading]);
 
-  if (!isAuthenticated || user?.user_type !== 'doctor') {
-    return <div className="flex min-h-screen items-center justify-center"><p>Loading...</p></div>;
+  if (isLoading || !isAuthenticated || userProfile?.userType !== 'doctor') {
+    // Show loading state or null while checking auth / redirecting
+    return <div className="flex min-h-screen items-center justify-center"><p>Loading doctor portal...</p></div>;
   }
   
   const logo = (
@@ -42,7 +45,7 @@ export default function DoctorLayout({ children }: { children: ReactNode }) {
         <SidebarNav 
           navItems={doctorNavItems} 
           logo={logo}
-          userName={`${user.first_name} ${user.last_name}`}
+          userName={`${userProfile.firstName} ${userProfile.lastName}`}
           userRole="Doctor"
         />
       </aside>

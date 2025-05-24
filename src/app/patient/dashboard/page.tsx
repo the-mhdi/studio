@@ -9,12 +9,12 @@ import { DashboardHeader } from "@/components/shared/dashboard-header";
 import Image from "next/image";
 
 export default function PatientDashboardPage() {
-  const { user } = useAuthStore();
+  const { userProfile } = useAuthStore();
 
   return (
     <div>
       <DashboardHeader
-        title={`Welcome, ${user?.first_name || 'Patient'}`}
+        title={`Welcome, ${userProfile?.firstName || 'Patient'}`}
         description="Your personal health assistant is ready for you."
       />
 
