@@ -13,7 +13,6 @@ const patientNavItems: NavItem[] = [
   { href: '/patient/chat', label: 'AI Assistant', icon: MessageCircle },
   { href: '/patient/appointments', label: 'Appointments', icon: CalendarPlus },
   { href: '/patient/pill-reminder', label: 'Pill Reminders', icon: Pill },
-  // { href: '/patient/profile', label: 'My Profile', icon: UserCircle }, // Example if needed
 ];
 
 export default function PatientLayout({ children }: { children: ReactNode }) {
@@ -36,7 +35,6 @@ export default function PatientLayout({ children }: { children: ReactNode }) {
         <h1 className="text-xl font-bold">MediMind Patient</h1>
     </Link>
   );
-
 
   return (
     <div className="flex min-h-screen bg-background">

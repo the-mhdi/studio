@@ -5,7 +5,7 @@ import { useEffect, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/authStore';
 import { SidebarNav, type NavItem } from '@/components/shared/sidebar-nav';
-import { LayoutDashboard, Users, Settings, Stethoscope, CalendarDays, FileText } from 'lucide-react';
+import { LayoutDashboard, Users, Settings, Stethoscope, CalendarDays } from 'lucide-react';
 import Link from 'next/link';
 
 const doctorNavItems: NavItem[] = [
@@ -13,7 +13,6 @@ const doctorNavItems: NavItem[] = [
   { href: '/doctor/patients', label: 'Patients', icon: Users },
   { href: '/doctor/appointments', label: 'Appointments', icon: CalendarDays },
   { href: '/doctor/ai-customization', label: 'AI Customization', icon: Settings },
-  // { href: '/doctor/documents', label: 'All Documents', icon: FileText }, // Example if needed
 ];
 
 export default function DoctorLayout({ children }: { children: ReactNode }) {
@@ -27,7 +26,6 @@ export default function DoctorLayout({ children }: { children: ReactNode }) {
   }, [isAuthenticated, user, router]);
 
   if (!isAuthenticated || user?.user_type !== 'doctor') {
-    // Render a loading state or null while redirecting
     return <div className="flex min-h-screen items-center justify-center"><p>Loading...</p></div>;
   }
   

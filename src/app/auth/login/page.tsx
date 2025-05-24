@@ -25,7 +25,6 @@ export default function LoginPage() {
     setIsLoading(true);
 
     // Mock authentication logic
-    // In a real app, you'd call an API endpoint
     setTimeout(() => {
       let userRole = 'patient'; // Default role
       if (email.startsWith('doctor@')) {

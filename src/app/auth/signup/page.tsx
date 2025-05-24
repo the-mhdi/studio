@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function SignupPage() {
   const router = useRouter();
-  const { login } = useAuthStore(); // Using login to set user for demo
+  const { login } = useAuthStore(); 
   const { toast } = useToast();
 
   const [firstName, setFirstName] = useState('');
@@ -29,7 +29,6 @@ export default function SignupPage() {
     event.preventDefault();
     setIsLoading(true);
 
-    // Mock signup logic
     setTimeout(() => {
       const mockUser: MockUser = {
         user_id: Date.now(),
@@ -41,8 +40,6 @@ export default function SignupPage() {
         created_at: new Date().toISOString(),
       };
 
-      // In a real app, this would send data to backend and then login.
-      // For demo, we just "log in" the new user.
       login(mockUser); 
       
       toast({
