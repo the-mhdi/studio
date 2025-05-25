@@ -52,7 +52,7 @@ export interface Diagnosis {
   diagnosedBy: string; // Firebase UID of the doctor
   diagnosisDate: string; // YYYY-MM-DD
   createdAt: any; // Firestore serverTimestamp
-  doctorName?: string; // For display purposes
+  doctorName?: string; // For display
 }
 
 export interface Appointment {
@@ -60,12 +60,13 @@ export interface Appointment {
   patientAuthUid: string; // Firebase UID of the patient (from User collection)
   patientRecordId?: string; // Optional: Link to the doctor-managed PatientRecord
   doctorId: string; // Firebase UID of the doctor
-  appointmentDate: string; // ISO string
+  appointmentDate: string; // ISO string (e.g., "2024-07-30T14:30:00.000Z")
   reason?: string;
   notes?: string;
   createdAt: any; // Firestore serverTimestamp
   patientName?: string; // For display
   doctorName?: string; // For display
+  status?: 'upcoming' | 'completed' | 'cancelled'; // Added status
 }
 
 export interface PatientDocument {
@@ -98,7 +99,7 @@ export interface AiInstruction {
 }
 
 export interface PillReminder {
-  id: string; // client-generated id or Firestore document ID
+  reminderId?: string; // Firestore document ID
   patientAuthUid: string; // Firebase UID of the patient
   medicationName: string;
   dosage: string;

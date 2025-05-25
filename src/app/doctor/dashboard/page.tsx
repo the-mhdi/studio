@@ -2,21 +2,73 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, CalendarCheck, Bot } from "lucide-react";
+import { Users, CalendarCheck, Bot, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/lib/authStore";
 import { DashboardHeader } from "@/components/shared/dashboard-header";
 import Link from "next/link";
 import Image from "next/image";
+import { useEffect, useState } from "react";
+import { db } from "@/lib/firebase";
+import { collection, query, where, getDocs, Timestamp,getCountFromServer } from "firebase/firestore";
+import { isFuture, parseISO } from "date-fns";
+import type { PatientRecord, Appointment } from "@/lib/types";
+
+
+interface SummaryData {
+  totalPatients: number;
+  upcomingAppointments: number;
+}
 
 export default function DoctorDashboardPage() {
   const { userProfile } = useAuthStore();
+  const [summaryData, setSummaryData] = useState<SummaryData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Mock data for dashboard cards - replace with real data fetching
-  const summaryData = {
-    totalPatients: 25, // TODO: Fetch from Firestore patientRecords collection for this doctor
-    upcomingAppointments: 5, // TODO: Fetch from Firestore appointments collection
-    aiQueriesToday: 12, // This might be harder to track without specific logging
-  };
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!userProfile || userProfile.userType !== 'doctor') {
+        setIsLoading(false);
+        return;
+      }
+      setIsLoading(true);
+      try {
+        // Fetch total patients
+        const patientsQuery = query(collection(db, "patientRecords"), where("doctorId", "==", userProfile.uid));
+        const patientsSnapshot = await getCountFromServer(patientsQuery);
+        const totalPatients = patientsSnapshot.data().count;
+
+        // Fetch upcoming appointments
+        const now = new Date();
+        const appointmentsQuery = query(
+          collection(db, "appointments"),
+          where("doctorId", "==", userProfile.uid)
+          // Firestore does not directly support isFuture in queries. We fetch recent/future and filter client-side.
+          // A more scalable solution might involve a 'status' field or querying by a date range.
+        );
+        const appointmentsSnapshot = await getDocs(appointmentsQuery);
+        let upcomingAppointmentsCount = 0;
+        appointmentsSnapshot.forEach(doc => {
+          const apt = doc.data() as Appointment;
+          if (apt.appointmentDate && isFuture(parseISO(apt.appointmentDate))) {
+            upcomingAppointmentsCount++;
+          }
+        });
+        
+        setSummaryData({
+          totalPatients,
+          upcomingAppointments: upcomingAppointmentsCount,
+        });
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+        // Keep summaryData as null or set to 0 to indicate error/no data
+        setSummaryData({ totalPatients: 0, upcomingAppointments: 0 });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [userProfile]);
 
   return (
     <div>
@@ -33,7 +85,7 @@ export default function DoctorDashboardPage() {
               <Users className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{summaryData.totalPatients}</div>
+              {isLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : <div className="text-2xl font-bold">{summaryData?.totalPatients ?? 0}</div>}
               <p className="text-xs text-muted-foreground">Managed by you</p>
             </CardContent>
           </Card>
@@ -45,8 +97,8 @@ export default function DoctorDashboardPage() {
               <CalendarCheck className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{summaryData.upcomingAppointments}</div>
-              <p className="text-xs text-muted-foreground">Scheduled for today/tomorrow</p>
+              {isLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : <div className="text-2xl font-bold">{summaryData?.upcomingAppointments ?? 0}</div>}
+              <p className="text-xs text-muted-foreground">Scheduled for the future</p>
             </CardContent>
           </Card>
         </Link>
