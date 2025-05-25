@@ -90,7 +90,7 @@ export interface ChatMessage {
 }
 
 export interface AiInstruction {
-  instructionId?: string; // Firestore document ID
+  instructionId?: string; // Firestore document ID, typically same as doctorId
   doctorId: string; // Firebase UID of the doctor
   instructionText: string;
   promptText?: string;
@@ -107,4 +107,14 @@ export interface PillReminder {
   times: string[]; // e.g., ["08:00", "20:00"]
   notes?: string;
   createdAt: any; // Firestore serverTimestamp
+}
+
+// For patient chat flow
+export interface PatientChatFlowInput {
+  userMessage: string;
+  patientAuthUid: string;
+}
+
+export interface PatientChatFlowOutput {
+  aiResponse: string;
 }

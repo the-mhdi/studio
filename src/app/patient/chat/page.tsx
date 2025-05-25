@@ -15,6 +15,7 @@ import { db } from '@/lib/firebase';
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { format, parseISO } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
+import { patientChat, type PatientChatFlowInput } from '@/ai/flows/patient-chat-flow';
 
 export default function ChatPage() {
   const { userProfile } = useAuthStore();
@@ -25,7 +26,7 @@ export default function ChatPage() {
   const [isFetchingHistory, setIsFetchingHistory] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const initialLoadProcessed = useRef(false); // To manage welcome message logic
+  const initialLoadProcessed = useRef(false);
 
   useEffect(() => {
     if (!userProfile || userProfile.userType !== 'patient') {
@@ -38,7 +39,7 @@ export default function ChatPage() {
 
     setIsFetchingHistory(true);
     setFetchError(null);
-    // initialLoadProcessed.current = false; // Reset for new user/login if userProfile changes
+    initialLoadProcessed.current = false; 
 
     console.log(`[ChatPage] Setting up Firestore listener for patientAuthUid: ${userProfile.uid}`);
 
@@ -123,13 +124,13 @@ export default function ChatPage() {
 
   const handleSendMessage = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    console.log('[ChatPage] handleSendMessage triggered. Current raw input state:', `"${input}"`); // LOG 0
+    console.log('[ChatPage] handleSendMessage triggered. Current raw input state:', `"${input}"`);
 
     if (!userProfile || userProfile.userType !== 'patient') {
       toast({ title: "Error", description: "You must be logged in as a patient to chat.", variant: "destructive" });
       return;
     }
-    if (isFetchingHistory && !initialLoadProcessed.current) { // Ensure history (or welcome) is loaded
+    if (isFetchingHistory && !initialLoadProcessed.current) {
       toast({ title: "Chat Not Ready", description: "Chat is still initializing.", variant: "default" });
       return;
     }
@@ -137,12 +138,10 @@ export default function ChatPage() {
       toast({ title: "Chat Unavailable", description: "Cannot send message due to a previous error.", variant: "destructive" });
       return;
     }
-    if (isLoadingResponse) {
-      return; 
-    }
+    if (isLoadingResponse) return;
     
     const trimmedInput = input.trim();
-    console.log('[ChatPage] Trimmed input value:', `"${trimmedInput}"`); // LOG 0.5 (trimmed)
+    console.log('[ChatPage] Trimmed input value:', `"${trimmedInput}"`);
 
     if (!trimmedInput) {
         toast({ title: "Empty Message", description: "Please type a message to send.", variant: "default" });
@@ -150,8 +149,7 @@ export default function ChatPage() {
     }
 
     const currentUserMessageText = trimmedInput; 
-    console.log('[ChatPage] Captured (currentUserMessageText):', `"${currentUserMessageText}"`); // LOG 1
-
+    console.log('[ChatPage] Captured currentUserMessageText for user message:', `"${currentUserMessageText}"`);
     setInput(''); 
     setIsLoadingResponse(true);
 
@@ -171,18 +169,19 @@ export default function ChatPage() {
       });
       console.log("[ChatPage] User message successfully saved to Firestore.");
 
-      // --- AI Response Simulation ---
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Call the Genkit flow for AI response
+      console.log(`[ChatPage] Calling patientChatFlow with message: "${currentUserMessageText}" and patientAuthUid: "${userProfile.uid}"`);
+      const aiFlowInput: PatientChatFlowInput = {
+        userMessage: currentUserMessageText,
+        patientAuthUid: userProfile.uid,
+      };
+      const aiResult = await patientChat(aiFlowInput);
+      let aiResponseText = aiResult.aiResponse;
 
-      console.log(`[ChatPage] About to construct AI response. currentUserMessageText value is: "${currentUserMessageText}"`); // LOG 2
-      let aiResponseText = `I've received your message: "${currentUserMessageText}". As an AI, I'm still learning. For specific medical advice, please consult your doctor.`;
-      
-      if (currentUserMessageText.toLowerCase().includes("schedule appointment")) {
-        aiResponseText = "Sure, I can help with that. Please go to the 'Appointments' section to schedule a new appointment, or tell me your preferred date and time, and I can guide you.";
-      } else if (currentUserMessageText.toLowerCase().includes("headache")) {
-        aiResponseText = "I understand you have a headache. For medical advice, please consult your doctor. I can provide general information if you'd like. Remember to rest and stay hydrated.";
+      if (!aiResponseText) {
+        aiResponseText = "I'm sorry, I encountered an issue and can't respond right now. Please try again later.";
+        console.warn("[ChatPage] AI flow returned empty response.");
       }
-      // --- End AI Response Simulation ---
 
       const aiMessageData: Omit<ChatMessage, 'chatId' | 'sentAt'> = {
         patientAuthUid: userProfile.uid,
@@ -202,10 +201,11 @@ export default function ChatPage() {
       console.error("[ChatPage] Error during message sending/AI response: ", error);
       toast({
         title: "Message Error",
-        description: "Could not send message or get AI response: " + error.message,
+        description: "Could not send message or get AI response: " + (error.message || "Unknown error"),
         variant: "destructive",
       });
-      setInput(currentUserMessageText); // Restore input on error
+      // Do not restore input if user message was successfully saved but AI failed
+      // setInput(currentUserMessageText); 
     } finally {
       setIsLoadingResponse(false);
     }
@@ -323,5 +323,3 @@ export default function ChatPage() {
     </div>
   );
 }
-
-    
