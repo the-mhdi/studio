@@ -25,7 +25,7 @@ export default function ChatPage() {
   const [isFetchingHistory, setIsFetchingHistory] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const initialLoadProcessed = useRef(false);
+  const initialLoadProcessed = useRef(false); // To manage welcome message logic
 
   useEffect(() => {
     if (!userProfile || userProfile.userType !== 'patient') {
@@ -38,15 +38,9 @@ export default function ChatPage() {
 
     setIsFetchingHistory(true);
     setFetchError(null);
-    
-    // Reset initialLoadProcessed ref if userProfile changes (e.g., re-login)
-    // This ensures welcome message logic runs correctly for a new user session.
-    // Note: This is a simplified approach. A more robust solution might involve
-    // truly unmounting/remounting this component on user change via a key prop.
-    initialLoadProcessed.current = false;
+    // initialLoadProcessed.current = false; // Reset for new user/login if userProfile changes
 
-
-    console.log(`[ChatPage] Setting up listener for patientAuthUid: ${userProfile.uid}`);
+    console.log(`[ChatPage] Setting up Firestore listener for patientAuthUid: ${userProfile.uid}`);
 
     const chatMessagesRef = collection(db, "chatMessages");
     const q = query(
@@ -69,10 +63,10 @@ export default function ChatPage() {
           isUser: data.isUser,
         } as ChatMessage);
       });
-      console.log(`[ChatPage] onSnapshot: Fetched ${fetchedMessagesFromDB.length} messages.`);
+      console.log(`[ChatPage] onSnapshot: Fetched ${fetchedMessagesFromDB.length} messages from Firestore.`);
 
       if (!initialLoadProcessed.current && userProfile) {
-        console.log('[ChatPage] First snapshot processing.');
+        console.log('[ChatPage] First snapshot processing after mount/user change.');
         if (fetchedMessagesFromDB.length === 0 && !fetchError) {
           console.log('[ChatPage] No history, creating client-side welcome message.');
           const welcomeMessage: ChatMessage = {
@@ -91,7 +85,7 @@ export default function ChatPage() {
         }
         initialLoadProcessed.current = true;
       } else {
-        console.log('[ChatPage] Subsequent snapshot, setting fetched messages directly from Firestore.');
+         console.log('[ChatPage] Subsequent snapshot, setting messages directly from Firestore.');
         setMessages(fetchedMessagesFromDB);
       }
       setIsFetchingHistory(false);
@@ -109,14 +103,14 @@ export default function ChatPage() {
       }
       setFetchError(detailedError);
       setIsFetchingHistory(false);
-      initialLoadProcessed.current = true;
+      initialLoadProcessed.current = true; 
     });
 
     return () => {
       console.log("[ChatPage] Unsubscribing from chat listener.");
       unsubscribe();
     };
-  }, [userProfile]); // Re-run effect if userProfile changes (e.g. new login)
+  }, [userProfile]);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -129,31 +123,60 @@ export default function ChatPage() {
 
   const handleSendMessage = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    if (!input.trim() || !userProfile || userProfile.userType !== 'patient' || isLoadingResponse || isFetchingHistory || fetchError) return;
+    console.log('[ChatPage] handleSendMessage triggered. Current raw input state:', `"${input}"`); // LOG 0
 
-    const currentUserMessageText = input.trim(); // Capture input before clearing
-    setInput('');
+    if (!userProfile || userProfile.userType !== 'patient') {
+      toast({ title: "Error", description: "You must be logged in as a patient to chat.", variant: "destructive" });
+      return;
+    }
+    if (isFetchingHistory && !initialLoadProcessed.current) { // Ensure history (or welcome) is loaded
+      toast({ title: "Chat Not Ready", description: "Chat is still initializing.", variant: "default" });
+      return;
+    }
+    if (fetchError) {
+      toast({ title: "Chat Unavailable", description: "Cannot send message due to a previous error.", variant: "destructive" });
+      return;
+    }
+    if (isLoadingResponse) {
+      return; 
+    }
+    
+    const trimmedInput = input.trim();
+    console.log('[ChatPage] Trimmed input value:', `"${trimmedInput}"`); // LOG 0.5 (trimmed)
+
+    if (!trimmedInput) {
+        toast({ title: "Empty Message", description: "Please type a message to send.", variant: "default" });
+        return;
+    }
+
+    const currentUserMessageText = trimmedInput; 
+    console.log('[ChatPage] Captured (currentUserMessageText):', `"${currentUserMessageText}"`); // LOG 1
+
+    setInput(''); 
     setIsLoadingResponse(true);
 
     const userMessageData: Omit<ChatMessage, 'chatId' | 'sentAt'> = {
       patientAuthUid: userProfile.uid,
       senderId: userProfile.uid,
       senderName: `${userProfile.firstName} ${userProfile.lastName}`,
-      messageText: currentUserMessageText, // Use captured text
+      messageText: currentUserMessageText, 
       isUser: true,
     };
 
     try {
-      console.log("[ChatPage] Saving user message:", userMessageData);
+      console.log("[ChatPage] User message to be saved to Firestore:", JSON.stringify(userMessageData));
       await addDoc(collection(db, "chatMessages"), {
         ...userMessageData,
         sentAt: serverTimestamp(),
       });
-      console.log("[ChatPage] User message saved. Simulating AI response.");
+      console.log("[ChatPage] User message successfully saved to Firestore.");
 
       // --- AI Response Simulation ---
       await new Promise(resolve => setTimeout(resolve, 1500));
+
+      console.log(`[ChatPage] About to construct AI response. currentUserMessageText value is: "${currentUserMessageText}"`); // LOG 2
       let aiResponseText = `I've received your message: "${currentUserMessageText}". As an AI, I'm still learning. For specific medical advice, please consult your doctor.`;
+      
       if (currentUserMessageText.toLowerCase().includes("schedule appointment")) {
         aiResponseText = "Sure, I can help with that. Please go to the 'Appointments' section to schedule a new appointment, or tell me your preferred date and time, and I can guide you.";
       } else if (currentUserMessageText.toLowerCase().includes("headache")) {
@@ -168,28 +191,27 @@ export default function ChatPage() {
         messageText: aiResponseText,
         isUser: false,
       };
-      console.log("[ChatPage] Saving AI message:", aiMessageData);
+      console.log("[ChatPage] AI response message to be saved to Firestore:", JSON.stringify(aiMessageData));
       await addDoc(collection(db, "chatMessages"), {
         ...aiMessageData,
         sentAt: serverTimestamp(),
       });
-      console.log("[ChatPage] AI message saved. onSnapshot will update UI.");
+      console.log("[ChatPage] AI response message successfully saved. UI will update via onSnapshot.");
 
     } catch (error: any) {
-      console.error("[ChatPage] Error sending message or getting AI response: ", error);
+      console.error("[ChatPage] Error during message sending/AI response: ", error);
       toast({
         title: "Message Error",
         description: "Could not send message or get AI response: " + error.message,
         variant: "destructive",
       });
-      // Restore input if sending failed, to allow user to retry or copy message
-      setInput(currentUserMessageText); 
+      setInput(currentUserMessageText); // Restore input on error
     } finally {
       setIsLoadingResponse(false);
     }
   };
 
-  const canChat = userProfile && userProfile.userType === 'patient' && !fetchError && !isFetchingHistory;
+  const canChat = userProfile && userProfile.userType === 'patient' && !fetchError && (!isFetchingHistory || initialLoadProcessed.current);
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] md:h-[calc(100vh-5rem)]">
@@ -253,7 +275,6 @@ export default function ChatPage() {
                   <p className="text-sm whitespace-pre-wrap">{message.messageText}</p>
                   {message.sentAt && (
                     <p className="mt-1 text-xs opacity-70 text-right">
-                      {/* Ensure sentAt is a string before parsing. Fallback for local client-side messages */}
                       {typeof message.sentAt === 'string' ? format(parseISO(message.sentAt), 'HH:mm') : 'Sending...'}
                     </p>
                   )}
@@ -302,3 +323,5 @@ export default function ChatPage() {
     </div>
   );
 }
+
+    
