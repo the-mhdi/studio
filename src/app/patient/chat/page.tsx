@@ -14,29 +14,36 @@ import { DashboardHeader } from '@/components/shared/dashboard-header';
 import { db } from '@/lib/firebase';
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { format, parseISO } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 export default function ChatPage() {
   const { userProfile } = useAuthStore();
+  const { toast } = useToast();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isLoadingResponse, setIsLoadingResponse] = useState(false);
   const [isFetchingHistory, setIsFetchingHistory] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const initialLoadProcessed = useRef(false); // Tracks if the first snapshot has been processed
+  const initialLoadProcessed = useRef(false); // Tracks if the first snapshot has been processed and welcome message shown
 
   useEffect(() => {
     if (!userProfile || userProfile.userType !== 'patient') {
       setIsFetchingHistory(false);
-      initialLoadProcessed.current = true; // Mark as processed if no user
+      initialLoadProcessed.current = true; 
       setFetchError("User profile not available or not a patient. Please log in.");
-      setMessages([]); // Clear messages if no user
+      setMessages([]);
       return;
     }
 
     setIsFetchingHistory(true);
     setFetchError(null);
-    initialLoadProcessed.current = false; // Reset for new user/mount
+    // Reset initialLoadProcessed if userProfile changes (e.g., logout and login as different user)
+    // but not on every render. This should be handled by the parent component unmounting/remounting ChatPage,
+    // or explicitly if we want to reset it on userProfile.uid change.
+    // For simplicity, we assume component remount on user change or full page navigation.
+    // If ChatPage persists across user changes without remount, a more complex reset for initialLoadProcessed might be needed.
+
     console.log(`[ChatPage] Setting up listener for patientAuthUid: ${userProfile.uid}`);
 
     const chatMessagesRef = collection(db, "chatMessages");
@@ -62,10 +69,12 @@ export default function ChatPage() {
       });
       console.log(`[ChatPage] onSnapshot: Fetched ${fetchedMessagesFromDB.length} messages.`);
 
-      if (!initialLoadProcessed.current) {
+      if (!initialLoadProcessed.current && userProfile) {
+        console.log('[ChatPage] First snapshot processing.');
         if (fetchedMessagesFromDB.length === 0 && !fetchError) {
+          console.log('[ChatPage] No history, creating client-side welcome message.');
           const welcomeMessage: ChatMessage = {
-            chatId: `welcome_${Date.now()}`,
+            chatId: `welcome_${Date.now()}_${Math.random()}`, // Ensure more unique ID for client-side only message
             patientAuthUid: userProfile.uid,
             senderId: "AI_ASSISTANT",
             senderName: 'MediMind AI',
@@ -75,11 +84,12 @@ export default function ChatPage() {
           };
           setMessages([welcomeMessage]);
         } else {
+          console.log('[ChatPage] History found or error present, setting fetched messages.');
           setMessages(fetchedMessagesFromDB);
         }
         initialLoadProcessed.current = true;
       } else {
-        // Subsequent updates, always reflect the DB state
+        console.log('[ChatPage] Subsequent snapshot, setting fetched messages directly from Firestore.');
         setMessages(fetchedMessagesFromDB);
       }
       setIsFetchingHistory(false);
@@ -97,18 +107,16 @@ export default function ChatPage() {
       }
       setFetchError(detailedError);
       setIsFetchingHistory(false);
-      initialLoadProcessed.current = true; // Mark as processed even on error
+      initialLoadProcessed.current = true; 
     });
 
     return () => {
       console.log("[ChatPage] Unsubscribing from chat listener.");
       unsubscribe();
-      initialLoadProcessed.current = false; // Reset on unmount or user change
-      setIsFetchingHistory(true);
-      setMessages([]); // Clear messages on unmount/user change
+      // Do not reset initialLoadProcessed here as it should persist for the lifetime of the component instance
+      // or until explicitly reset upon user change (which should ideally remount the component).
     };
-  }, [userProfile]); // Effect re-runs if userProfile changes
-
+  }, [userProfile]); // Removed fetchError from deps, errors are handled within the snapshot listener.
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -121,10 +129,10 @@ export default function ChatPage() {
 
   const handleSendMessage = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    if (!input.trim() || !userProfile || userProfile.userType !== 'patient' || isLoadingResponse) return;
+    if (!input.trim() || !userProfile || userProfile.userType !== 'patient' || isLoadingResponse || isFetchingHistory || fetchError) return;
 
     const currentUserMessageText = input;
-    setInput(''); // Clear input immediately
+    setInput(''); 
     setIsLoadingResponse(true);
 
     const userMessageData: Omit<ChatMessage, 'chatId' | 'sentAt'> = {
@@ -142,14 +150,14 @@ export default function ChatPage() {
         ...userMessageData,
         sentAt: serverTimestamp(),
       });
-      console.log("[ChatPage] User message saved.");
+      console.log("[ChatPage] User message saved. Waiting for AI response simulation.");
       
       // --- AI Response Simulation ---
       await new Promise(resolve => setTimeout(resolve, 1500)); 
       let aiResponseText = `I've received your message: "${userMessageData.messageText}". As an AI, I'm still learning. For specific medical advice, please consult your doctor.`;
-      if (userMessageData.messageText.toLowerCase().includes("schedule appointment")) {
+      if (currentUserMessageText.toLowerCase().includes("schedule appointment")) {
         aiResponseText = "Sure, I can help with that. Please go to the 'Appointments' section to schedule a new appointment, or tell me your preferred date and time, and I can guide you.";
-      } else if (userMessageData.messageText.toLowerCase().includes("headache")) {
+      } else if (currentUserMessageText.toLowerCase().includes("headache")) {
         aiResponseText = "I understand you have a headache. For medical advice, please consult your doctor. I can provide general information if you'd like. Remember to rest and stay hydrated.";
       }
       // --- End AI Response Simulation ---
@@ -166,25 +174,11 @@ export default function ChatPage() {
         ...aiMessageData,
         sentAt: serverTimestamp(),
       });
-      console.log("[ChatPage] AI message saved.");
-      // Firestore listener (onSnapshot) will update the messages state with both messages.
+      console.log("[ChatPage] AI message saved. onSnapshot will update UI.");
+      // onSnapshot listener will update the messages state with both messages.
 
     } catch (error: any) {
       console.error("[ChatPage] Error sending message or getting AI response: ", error);
-      // Optionally, restore user input if send failed
-      // setInput(currentUserMessageText); 
-       const errorMessage: ChatMessage = { // This message will also be picked up by onSnapshot if saved
-        chatId: `error_${Date.now()}`,
-        patientAuthUid: userProfile.uid,
-        senderId: "SYSTEM_ERROR",
-        senderName: "System",
-        messageText: "Sorry, I couldn't send your message or get a response. Please try again. Error: " + error.message,
-        sentAt: new Date().toISOString(),
-        isUser: false, 
-      };
-      // You might choose to add this error directly to Firestore as well,
-      // or handle it purely client-side without persisting it.
-      // For now, we'll let the toast handle user feedback for send errors.
       toast({
         title: "Message Error",
         description: "Could not send message or get AI response: " + error.message,
@@ -195,7 +189,7 @@ export default function ChatPage() {
     }
   };
   
-  const canChat = userProfile && userProfile.userType === 'patient' && !fetchError && !isFetchingHistory && initialLoadProcessed.current;
+  const canChat = userProfile && userProfile.userType === 'patient' && !fetchError && !isFetchingHistory;
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] md:h-[calc(100vh-5rem)]">
@@ -204,7 +198,7 @@ export default function ChatPage() {
         description="Chat with our AI for information and assistance."
       />
       <ScrollArea className="flex-grow p-4 rounded-lg border bg-card mb-4" ref={scrollAreaRef}>
-        {isFetchingHistory && !initialLoadProcessed.current ? (
+        {isFetchingHistory && !initialLoadProcessed.current ? ( // Show loading only if initial load hasn't processed
             <div className="flex justify-center items-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <p className="ml-2">Loading chat history...</p>
@@ -225,7 +219,7 @@ export default function ChatPage() {
           <div className="space-y-6">
             {messages.map((message) => (
               <div
-                key={message.chatId} // Ensure chatId is always unique and present
+                key={message.chatId} 
                 className={cn(
                   "flex items-end gap-3",
                   message.isUser ? "justify-end" : "justify-start"
@@ -257,14 +251,16 @@ export default function ChatPage() {
                     {message.isUser ? (userProfile?.firstName || "You") : message.senderName}
                   </p>
                   <p className="text-sm whitespace-pre-wrap">{message.messageText}</p>
-                  <p className="mt-1 text-xs opacity-70 text-right">
-                    {message.sentAt ? format(parseISO(message.sentAt as string), 'HH:mm') : ''}
-                  </p>
+                  {message.sentAt && (
+                    <p className="mt-1 text-xs opacity-70 text-right">
+                      {format(parseISO(message.sentAt as string), 'HH:mm')}
+                    </p>
+                  )}
                 </div>
-                {message.isUser && (
+                {message.isUser && userProfile && ( // Added userProfile check for AvatarFallback
                    <Avatar className="h-10 w-10">
                      <AvatarFallback>
-                      {userProfile?.firstName?.[0] || <User size={24} />}
+                      {userProfile.firstName?.[0] || <User size={24} />}
                     </AvatarFallback>
                   </Avatar>
                 )}
@@ -286,17 +282,17 @@ export default function ChatPage() {
       <form onSubmit={handleSendMessage} className="flex items-center gap-3 border-t pt-4">
         <Input
           type="text"
-          placeholder={!userProfile || userProfile.userType !== 'patient' || fetchError ? "Chat unavailable" : isFetchingHistory ? "Loading chat..." : "Type your message..."}
+          placeholder={!userProfile || userProfile.userType !== 'patient' || fetchError ? "Chat unavailable" : (isFetchingHistory && !initialLoadProcessed.current) ? "Loading chat..." : "Type your message..."}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           className="flex-grow text-base p-3"
-          disabled={isLoadingResponse || isFetchingHistory || !!fetchError || !userProfile || userProfile.userType !== 'patient'}
+          disabled={isLoadingResponse || (isFetchingHistory && !initialLoadProcessed.current) || !!fetchError || !userProfile || userProfile.userType !== 'patient'}
         />
         <Button 
           type="submit" 
           size="icon" 
           className="h-12 w-12" 
-          disabled={isLoadingResponse || isFetchingHistory || !!fetchError || !input.trim() || !userProfile || userProfile.userType !== 'patient'}
+          disabled={isLoadingResponse || (isFetchingHistory && !initialLoadProcessed.current) || !!fetchError || !input.trim() || !userProfile || userProfile.userType !== 'patient'}
         >
           <Send size={20} />
           <span className="sr-only">Send message</span>
