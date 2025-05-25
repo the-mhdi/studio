@@ -21,18 +21,23 @@ export default function ChatPage() {
   const [input, setInput] = useState('');
   const [isLoadingResponse, setIsLoadingResponse] = useState(false);
   const [isFetchingHistory, setIsFetchingHistory] = useState(true);
-  const [fetchError, setFetchError] = useState<string|null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const initialLoadProcessed = useRef(false); // Tracks if the first snapshot has been processed
 
   useEffect(() => {
     if (!userProfile || userProfile.userType !== 'patient') {
       setIsFetchingHistory(false);
+      initialLoadProcessed.current = true; // Mark as processed if no user
       setFetchError("User profile not available or not a patient. Please log in.");
+      setMessages([]); // Clear messages if no user
       return;
     }
+
     setIsFetchingHistory(true);
     setFetchError(null);
-    console.log(`[ChatPage] Attempting to fetch chat history for patientAuthUid: ${userProfile.uid}`);
+    initialLoadProcessed.current = false; // Reset for new user/mount
+    console.log(`[ChatPage] Setting up listener for patientAuthUid: ${userProfile.uid}`);
 
     const chatMessagesRef = collection(db, "chatMessages");
     const q = query(
@@ -42,10 +47,10 @@ export default function ChatPage() {
     );
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const fetchedMessages: ChatMessage[] = [];
+      const fetchedMessagesFromDB: ChatMessage[] = [];
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-        fetchedMessages.push({
+        fetchedMessagesFromDB.push({
           chatId: doc.id,
           patientAuthUid: data.patientAuthUid,
           senderId: data.senderId,
@@ -55,10 +60,11 @@ export default function ChatPage() {
           isUser: data.isUser,
         } as ChatMessage);
       });
-      console.log(`[ChatPage] Fetched ${fetchedMessages.length} messages.`);
-      
-      if (fetchedMessages.length === 0 && !fetchError) { 
-         const welcomeMessage: ChatMessage = {
+      console.log(`[ChatPage] onSnapshot: Fetched ${fetchedMessagesFromDB.length} messages.`);
+
+      if (!initialLoadProcessed.current) {
+        if (fetchedMessagesFromDB.length === 0 && !fetchError) {
+          const welcomeMessage: ChatMessage = {
             chatId: `welcome_${Date.now()}`,
             patientAuthUid: userProfile.uid,
             senderId: "AI_ASSISTANT",
@@ -68,24 +74,40 @@ export default function ChatPage() {
             isUser: false,
           };
           setMessages([welcomeMessage]);
+        } else {
+          setMessages(fetchedMessagesFromDB);
+        }
+        initialLoadProcessed.current = true;
       } else {
-        setMessages(fetchedMessages);
+        // Subsequent updates, always reflect the DB state
+        setMessages(fetchedMessagesFromDB);
       }
       setIsFetchingHistory(false);
     }, (error) => {
-      console.error("[ChatPage] Error fetching chat history: ", error);
-      if (error.message && (error.message.includes("indexes?create_composite") || error.message.includes("requires an index"))) {
-        setFetchError("Could not load chat history. A database index might be missing. Please check the browser's developer console for a link to create it.");
-      } else if (error.message && (error.message.toLowerCase().includes("permission denied") || error.message.toLowerCase().includes("insufficient permissions"))) {
-        setFetchError("Could not load chat history due to permission issues. Please ensure you are logged in correctly or contact support.");
-      } else {
-        setFetchError("Could not load chat history. An unexpected error occurred: " + error.message);
+      console.error("[ChatPage] Error in onSnapshot listener: ", error);
+      let detailedError = "Could not load chat history. An unexpected error occurred.";
+      if (error.message) {
+        if (error.message.includes("indexes?create_composite") || error.message.includes("requires an index")) {
+          detailedError = "Could not load chat history. A database index might be missing. Please check the browser's developer console for a link to create it.";
+        } else if (error.message.toLowerCase().includes("permission denied") || error.message.toLowerCase().includes("insufficient permissions")) {
+          detailedError = "Could not load chat history due to permission issues. Please ensure you are logged in correctly and rules allow access, or contact support.";
+        } else {
+          detailedError = `Could not load chat history: ${error.message}`;
+        }
       }
+      setFetchError(detailedError);
       setIsFetchingHistory(false);
+      initialLoadProcessed.current = true; // Mark as processed even on error
     });
 
-    return () => unsubscribe();
-  }, [userProfile]);
+    return () => {
+      console.log("[ChatPage] Unsubscribing from chat listener.");
+      unsubscribe();
+      initialLoadProcessed.current = false; // Reset on unmount or user change
+      setIsFetchingHistory(true);
+      setMessages([]); // Clear messages on unmount/user change
+    };
+  }, [userProfile]); // Effect re-runs if userProfile changes
 
 
   useEffect(() => {
@@ -99,33 +121,28 @@ export default function ChatPage() {
 
   const handleSendMessage = async (event?: FormEvent<HTMLFormElement>) => {
     event?.preventDefault();
-    if (!input.trim() || !userProfile || userProfile.userType !== 'patient') return;
+    if (!input.trim() || !userProfile || userProfile.userType !== 'patient' || isLoadingResponse) return;
+
+    const currentUserMessageText = input;
+    setInput(''); // Clear input immediately
+    setIsLoadingResponse(true);
 
     const userMessageData: Omit<ChatMessage, 'chatId' | 'sentAt'> = {
       patientAuthUid: userProfile.uid,
       senderId: userProfile.uid,
       senderName: `${userProfile.firstName} ${userProfile.lastName}`,
-      messageText: input,
+      messageText: currentUserMessageText,
       isUser: true,
     };
     
-    const optimisticUserMessage: ChatMessage = {
-      ...userMessageData,
-      chatId: `temp_user_${Date.now()}`,
-      sentAt: new Date().toISOString(), 
-    };
-    // Add user message optimistically
-    setMessages(prev => [...prev.filter(msg => msg.chatId !== `welcome_${Date.now()}`), optimisticUserMessage]); // Remove welcome if it's there
-    
-    const currentInput = input;
-    setInput('');
-    setIsLoadingResponse(true);
-
     try {
+      // Save user message to Firestore
+      console.log("[ChatPage] Saving user message:", userMessageData);
       await addDoc(collection(db, "chatMessages"), {
         ...userMessageData,
         sentAt: serverTimestamp(),
       });
+      console.log("[ChatPage] User message saved.");
       
       // --- AI Response Simulation ---
       await new Promise(resolve => setTimeout(resolve, 1500)); 
@@ -144,19 +161,19 @@ export default function ChatPage() {
         messageText: aiResponseText,
         isUser: false,
       };
+      console.log("[ChatPage] Saving AI message:", aiMessageData);
       await addDoc(collection(db, "chatMessages"), {
         ...aiMessageData,
         sentAt: serverTimestamp(),
       });
-      // Firestore listener will update messages state with the actual saved messages.
-      // The optimistic message will be replaced by the actual one from the listener.
+      console.log("[ChatPage] AI message saved.");
+      // Firestore listener (onSnapshot) will update the messages state with both messages.
 
     } catch (error: any) {
       console.error("[ChatPage] Error sending message or getting AI response: ", error);
-      setInput(currentInput); // Restore input if send failed
-      // Remove the optimistic message if it's still there and an error occurred
-      setMessages(prev => prev.filter(msg => msg.chatId !== optimisticUserMessage.chatId)); 
-       const errorMessage: ChatMessage = {
+      // Optionally, restore user input if send failed
+      // setInput(currentUserMessageText); 
+       const errorMessage: ChatMessage = { // This message will also be picked up by onSnapshot if saved
         chatId: `error_${Date.now()}`,
         patientAuthUid: userProfile.uid,
         senderId: "SYSTEM_ERROR",
@@ -165,13 +182,20 @@ export default function ChatPage() {
         sentAt: new Date().toISOString(),
         isUser: false, 
       };
-      setMessages(prev => [...prev, errorMessage]);
+      // You might choose to add this error directly to Firestore as well,
+      // or handle it purely client-side without persisting it.
+      // For now, we'll let the toast handle user feedback for send errors.
+      toast({
+        title: "Message Error",
+        description: "Could not send message or get AI response: " + error.message,
+        variant: "destructive",
+      });
     } finally {
       setIsLoadingResponse(false);
     }
   };
   
-  const canChat = userProfile && userProfile.userType === 'patient' && !fetchError;
+  const canChat = userProfile && userProfile.userType === 'patient' && !fetchError && !isFetchingHistory && initialLoadProcessed.current;
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] md:h-[calc(100vh-5rem)]">
@@ -180,7 +204,7 @@ export default function ChatPage() {
         description="Chat with our AI for information and assistance."
       />
       <ScrollArea className="flex-grow p-4 rounded-lg border bg-card mb-4" ref={scrollAreaRef}>
-        {isFetchingHistory ? (
+        {isFetchingHistory && !initialLoadProcessed.current ? (
             <div className="flex justify-center items-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 <p className="ml-2">Loading chat history...</p>
@@ -201,7 +225,7 @@ export default function ChatPage() {
           <div className="space-y-6">
             {messages.map((message) => (
               <div
-                key={message.chatId}
+                key={message.chatId} // Ensure chatId is always unique and present
                 className={cn(
                   "flex items-end gap-3",
                   message.isUser ? "justify-end" : "justify-start"
@@ -240,7 +264,7 @@ export default function ChatPage() {
                 {message.isUser && (
                    <Avatar className="h-10 w-10">
                      <AvatarFallback>
-                      <User size={24} />
+                      {userProfile?.firstName?.[0] || <User size={24} />}
                     </AvatarFallback>
                   </Avatar>
                 )}
@@ -262,13 +286,18 @@ export default function ChatPage() {
       <form onSubmit={handleSendMessage} className="flex items-center gap-3 border-t pt-4">
         <Input
           type="text"
-          placeholder={canChat ? "Type your message..." : "Chat unavailable"}
+          placeholder={!userProfile || userProfile.userType !== 'patient' || fetchError ? "Chat unavailable" : isFetchingHistory ? "Loading chat..." : "Type your message..."}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           className="flex-grow text-base p-3"
-          disabled={!canChat || isLoadingResponse}
+          disabled={isLoadingResponse || isFetchingHistory || !!fetchError || !userProfile || userProfile.userType !== 'patient'}
         />
-        <Button type="submit" size="icon" className="h-12 w-12" disabled={!canChat || isLoadingResponse || !input.trim()}>
+        <Button 
+          type="submit" 
+          size="icon" 
+          className="h-12 w-12" 
+          disabled={isLoadingResponse || isFetchingHistory || !!fetchError || !input.trim() || !userProfile || userProfile.userType !== 'patient'}
+        >
           <Send size={20} />
           <span className="sr-only">Send message</span>
         </Button>
@@ -276,5 +305,3 @@ export default function ChatPage() {
     </div>
   );
 }
-
-    
