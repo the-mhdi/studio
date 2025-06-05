@@ -8,7 +8,7 @@ import Link from "next/link";
 export default function HomePage() {
   return (
     <div className="flex flex-col min-h-screen">
-      <header className="bg-primary text-primary-foreground py-6 shadow-md">
+      <header className="py-6">
         <div className="container mx-auto flex justify-between items-center px-4">
           <div className="flex items-center gap-2">
              <svg
@@ -21,14 +21,15 @@ export default function HomePage() {
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                className="text-primary"
               >
                 <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 16.75a.75.75 0 0 1-.75-.75V12.5a.75.75 0 0 1 1.5 0v5.5a.75.75 0 0 1-.75.75zm0-9a.75.75 0 0 1-.75-.75V8.5a.75.75 0 0 1 1.5 0v.5a.75.75 0 0 1-.75.75zM9.5 14.75a.75.75 0 0 1-.75-.75V10.5a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-.75.75zm5 0a.75.75 0 0 1-.75-.75V10.5a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-.75.75z"/>
                 <path d="M12 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
               </svg>
-            <h1 className="text-3xl font-bold">SAAIP</h1>
+            <h1 className="text-3xl font-bold text-primary">SAAIP</h1>
           </div>
           <nav className="space-x-4">
-            <Button variant="ghost" asChild className="text-primary-foreground hover:bg-primary/80 hover:text-primary-foreground">
+            <Button variant="ghost" asChild className="text-foreground hover:bg-accent hover:text-accent-foreground">
               <Link href="/auth/login">Login</Link>
             </Button>
             <Button variant="secondary" asChild>
@@ -100,9 +101,9 @@ export default function HomePage() {
         </section>
       </main>
 
-      <footer className="bg-muted text-muted-foreground py-8 text-center">
-        <p>&copy; {new Date().getFullYear()} SAAIP. All rights reserved.</p>
-        <p className="text-sm">Innovating Health, Together.</p>
+      <footer className="py-8 text-center">
+        <p className="text-muted-foreground">&copy; {new Date().getFullYear()} SAAIP. All rights reserved.</p>
+        <p className="text-sm text-muted-foreground">Innovating Health, Together.</p>
       </footer>
     </div>
   );
