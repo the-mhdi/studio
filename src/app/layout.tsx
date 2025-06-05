@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'MediMind - Your AI Health Assistant',
+  title: 'SAAIP - Your AI Health Assistant',
   description: 'Doctor-patient management app with AI assistant.',
 };
 
@@ -26,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased font-sans`}>
         <AppProviders>
           {children}
           <Toaster />

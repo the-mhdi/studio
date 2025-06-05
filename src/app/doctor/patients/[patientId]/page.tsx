@@ -28,7 +28,7 @@ import { doc, getDoc, collection, query, where, getDocs, addDoc, deleteDoc, upda
 export default function PatientProfilePage() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const patientRecordId = params.patientId as string; // This is the Firestore document ID of the PatientRecord
+  const patientRecordId = params.patientId as string; 
 
   const { userProfile: doctorUserProfile } = useAuthStore();
   const { toast } = useToast();
@@ -44,7 +44,6 @@ export default function PatientProfilePage() {
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [editablePatientDetails, setEditablePatientDetails] = useState<Partial<PatientRecord>>({});
 
-  // Form states for new diagnosis/document
   const [newDiagnosisText, setNewDiagnosisText] = useState('');
   const [newDiagnosisDate, setNewDiagnosisDate] = useState<Date | undefined>(new Date());
   const [documentFile, setDocumentFile] = useState<File | null>(null);
@@ -67,7 +66,6 @@ export default function PatientProfilePage() {
       setError(null);
 
       try {
-        // Fetch PatientRecord
         const patientDocRef = doc(db, "patientRecords", patientRecordId);
         const patientDocSnap = await getDoc(patientDocRef);
 
@@ -82,26 +80,23 @@ export default function PatientProfilePage() {
         setPatientRecord(fetchedPatientRecord);
         setEditablePatientDetails(fetchedPatientRecord);
 
-        // Fetch Diagnoses
         const diagnosesQuery = query(collection(db, "diagnoses"), where("patientRecordId", "==", patientRecordId));
         const diagnosesSnapshot = await getDocs(diagnosesQuery);
         const fetchedDiagnoses: Diagnosis[] = diagnosesSnapshot.docs.map(d => ({ diagnosisId: d.id, ...d.data() } as Diagnosis));
         setDiagnoses(fetchedDiagnoses.sort((a, b) => parseISO(b.diagnosisDate).getTime() - parseISO(a.diagnosisDate).getTime()));
 
-        // Fetch Documents
         const documentsQuery = query(collection(db, "patientDocuments"), where("patientRecordId", "==", patientRecordId));
         const documentsSnapshot = await getDocs(documentsQuery);
         const fetchedDocuments: PatientDocument[] = documentsSnapshot.docs.map(d => ({ documentId: d.id, ...d.data() } as PatientDocument));
         setDocuments(fetchedDocuments.sort((a,b) => (b.uploadedAt as Timestamp).toMillis() - (a.uploadedAt as Timestamp).toMillis()));
 
-        // Fetch Chat Messages if linkedAuthUid exists
         if (fetchedPatientRecord.linkedAuthUid) {
           const chatMessagesQuery = query(collection(db, "chatMessages"), where("patientAuthUid", "==", fetchedPatientRecord.linkedAuthUid));
           const chatMessagesSnapshot = await getDocs(chatMessagesQuery);
           const fetchedChatMessages: ChatMessage[] = chatMessagesSnapshot.docs.map(chat => ({ chatId: chat.id, ...chat.data() } as ChatMessage));
           setChatMessages(fetchedChatMessages.sort((a,b) => (a.sentAt as Timestamp).toMillis() - (b.sentAt as Timestamp).toMillis()));
         } else {
-          setChatMessages([]); // No linked user, so no chats to show this way
+          setChatMessages([]); 
         }
 
       } catch (err: any) {
@@ -127,16 +122,14 @@ export default function PatientProfilePage() {
   }, [chatMessages, activeTab]);
 
   const handleEditDetailsToggle = async () => {
-    if (isEditingDetails && patientRecord) { // Save logic
+    if (isEditingDetails && patientRecord) { 
       setIsLoading(true);
       try {
         const patientDocRef = doc(db, "patientRecords", patientRecord.recordId!);
         const updateData = { ...editablePatientDetails };
-        // Remove fields that shouldn't be directly updated or are handled by server
         delete updateData.recordId;
         delete updateData.doctorId;
         delete updateData.createdAt;
-        // Ensure initialPassword is not accidentally cleared if not being edited
         if (!updateData.initialPassword && patientRecord.initialPassword) {
             updateData.initialPassword = patientRecord.initialPassword;
         }
@@ -193,19 +186,17 @@ export default function PatientProfilePage() {
     e.preventDefault();
     if (!patientRecord || !documentFile || !doctorUserProfile) return;
     setIsUploading(true);
-    // In a real app: Upload documentFile to Firebase Storage, then save metadata to Firestore
-    // For now, we'll just simulate metadata saving
     try {
       const documentData: Omit<PatientDocument, 'documentId' | 'uploadedAt'> = {
         patientRecordId: patientRecord.recordId!,
         documentName: documentName || documentFile.name,
         documentType: documentType,
-        documentPath: `/uploads/mock/${documentFile.name}`, // Mock path, replace with actual Storage path
+        documentPath: `/uploads/mock/${documentFile.name}`, 
         uploadedBy: doctorUserProfile.uid,
       };
       const docRef = await addDoc(collection(db, "patientDocuments"), { ...documentData, uploadedAt: serverTimestamp() });
       setDocuments(prev => [{ ...documentData, documentId: docRef.id, uploadedAt: new Date().toISOString() }, ...prev]
-        .sort((a,b) => (b.uploadedAt as any).toMillis() - (a.uploadedAt as any).toMillis())); // Basic sort for optimism
+        .sort((a,b) => (b.uploadedAt as any).toMillis() - (a.uploadedAt as any).toMillis())); 
       setDocumentFile(null);
       setDocumentName('');
       setDocumentType('');
@@ -231,7 +222,6 @@ export default function PatientProfilePage() {
 
   const handleDeleteDocument = async (documentId: string) => {
     try {
-      // In real app, also delete from Firebase Storage
       await deleteDoc(doc(db, "patientDocuments", documentId));
       setDocuments(prev => prev.filter(d => d.documentId !== documentId));
       toast({ title: "Document Deleted", variant: "destructive"});
@@ -428,7 +418,7 @@ export default function PatientProfilePage() {
           <Card className="shadow-lg">
             <CardHeader>
               <CardTitle>AI Assistant Chat History</CardTitle>
-              <CardDescription>Conversation between {patientRecord.firstName} {patientRecord.lastName} and the MediMind AI.</CardDescription>
+              <CardDescription>Conversation between {patientRecord.firstName} {patientRecord.lastName} and the SAAIP AI.</CardDescription>
             </CardHeader>
             <CardContent>
               {chatMessages.length === 0 ? (
@@ -463,7 +453,7 @@ export default function PatientProfilePage() {
                           )}
                         >
                           <p className="text-sm font-medium mb-1">
-                            {message.isUser ? patientRecord.firstName : message.senderName || "MediMind AI"}
+                            {message.isUser ? patientRecord.firstName : message.senderName || "SAAIP AI"}
                           </p>
                           <p className="text-sm whitespace-pre-wrap">{message.messageText}</p>
                           <p className="mt-1 text-xs opacity-70 text-right">

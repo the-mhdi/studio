@@ -28,14 +28,13 @@ export default function DoctorLayout({ children }: { children: ReactNode }) {
   }, [isAuthenticated, userProfile, router, isLoading]);
 
   if (isLoading || !isAuthenticated || userProfile?.userType !== 'doctor') {
-    // Show loading state or null while checking auth / redirecting
     return <div className="flex min-h-screen items-center justify-center"><p>Loading doctor portal...</p></div>;
   }
   
   const logo = (
      <Link href="/doctor/dashboard" className="flex items-center gap-2 text-sidebar-foreground hover:text-sidebar-foreground/90">
         <Stethoscope size={28} />
-        <h1 className="text-xl font-bold">MediMind Doctor</h1>
+        <h1 className="text-xl font-bold">SAAIP Doctor</h1>
       </Link>
   );
 

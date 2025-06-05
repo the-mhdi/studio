@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useAuthStore } from "@/lib/authStore";
-import type { User, UserRole } from "@/lib/types"; // Changed from MockUser
+import type { User, UserRole } from "@/lib/types"; 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent, useEffect } from "react";
 import Link from "next/link";
@@ -58,21 +58,18 @@ export default function SignupPage() {
         firstName,
         lastName,
         userType: role,
-        createdAt: new Date().toISOString(), // Will be replaced by serverTimestamp if possible, or use as fallback
+        createdAt: new Date().toISOString(), 
       };
       console.log('[SignupPage] handleSubmit: Constructed userProfileData:', userProfileData);
 
 
-      // Store user profile in Firestore
       const userDocRef = doc(db, "users", firebaseUser.uid);
       await setDoc(userDocRef, {
         ...userProfileData,
-        createdAt: serverTimestamp(), // Use Firestore server timestamp for reliability
+        createdAt: serverTimestamp(), 
       });
       console.log('[SignupPage] handleSubmit: User profile stored in Firestore for UID:', firebaseUser.uid);
       
-      // Update auth store
-      // It's important that userProfileData here is complete and valid
       if (!userProfileData || !userProfileData.uid || !userProfileData.userType) {
         console.error("[SignupPage] handleSubmit: FATAL - userProfileData is invalid before calling authLogin.", userProfileData);
         throw new Error("Profile data construction failed.");
@@ -84,8 +81,6 @@ export default function SignupPage() {
         title: "Signup Successful!",
         description: `Welcome, ${firstName}! Your account as a ${role} has been created. Redirecting...`,
       });
-      
-      // Redirection is now handled by useEffect
       
     } catch (error: any) {
       console.error("[SignupPage] handleSubmit: Signup error:", error);
@@ -104,18 +99,13 @@ export default function SignupPage() {
   }
 
   if (isAuthenticated && userProfile) {
-    // Already logged in and profile exists, useEffect will redirect
     return <div className="flex min-h-screen items-center justify-center"><p>Redirecting to your dashboard...</p></div>;
   }
   
-  // If authenticated but no profile yet (e.g. right after signup before onAuthStateChanged fully updates profile in store)
-  // this can also show a loading or a specific message. For now, this means form is shown if profile is not yet loaded with auth.
-  // This might lead to a flicker if redirection is slightly delayed.
-
   return (
     <Card className="w-full shadow-xl">
       <CardHeader>
-        <CardTitle className="text-2xl">Create your MediMind Account</CardTitle>
+        <CardTitle className="text-2xl">Create your SAAIP Account</CardTitle>
         <CardDescription>Join us as a Doctor or Patient.</CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -144,7 +134,6 @@ export default function SignupPage() {
               defaultValue="patient"
               onValueChange={(value: string) => setRole(value as UserRole)}
               className="flex space-x-4"
-              // disabled={isSubmitting} // RadioGroup doesn't have a direct disabled prop like this
             >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="patient" id="role-patient" disabled={isSubmitting} />

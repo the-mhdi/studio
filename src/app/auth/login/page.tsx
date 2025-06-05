@@ -20,7 +20,7 @@ export default function LoginPage() {
   const { login: authLogin, isAuthenticated, userProfile, isLoading: authIsLoading } = useAuthStore();
   const { toast } = useToast();
 
-  const [email, setEmail] = useState(''); // Changed from identifier to email for clarity
+  const [email, setEmail] = useState(''); 
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -39,13 +39,12 @@ export default function LoginPage() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
-    console.log('[LoginPage] handleSubmit: Attempting login with email/identifier:', email);
+    console.log('[LoginPage] handleSubmit: Attempting login with email:', email);
 
     // Attempt custom PatientRecord email/initialPassword login first
     try {
       console.log('[LoginPage] Attempting PatientRecord login for email:', email, 'and password:', password ? '******' : '(empty)');
       const patientRecordsRef = collection(db, "patientRecords");
-      // Query for email first, as it's more likely to be unique for this login type
       const qByEmail = query(patientRecordsRef, where("email", "==", email));
       console.log('[LoginPage] PatientRecord login Firestore query created for email:', email);
       const emailQuerySnapshot = await getDocs(qByEmail);
@@ -61,34 +60,33 @@ export default function LoginPage() {
             patientRecordFoundAndMatched = true;
             
             const patientUserProfile: User = {
-              uid: `patientrecord_${docSnap.id}`, // Create a unique ID for this session type
+              uid: `patientrecord_${docSnap.id}`, 
               email: record.email || null,
               firstName: record.firstName,
               lastName: record.lastName,
-              userType: 'patient', // Patients logging in this way are 'patient'
+              userType: 'patient', 
               createdAt: record.createdAt instanceof Timestamp ? record.createdAt.toDate().toISOString() : record.createdAt || new Date().toISOString(),
-              patientRecordIdForAuth: docSnap.id, // Store the ID of the PatientRecord used for auth
+              patientRecordIdForAuth: docSnap.id, 
             };
             console.log('[LoginPage] Constructed patientUserProfile for PatientRecord email login:', patientUserProfile);
-            authLogin(null, patientUserProfile); // authUser is null for this type of login
+            authLogin(null, patientUserProfile); 
             toast({
               title: "Login Successful",
               description: `Welcome back, ${patientUserProfile.firstName}! Redirecting...`,
             });
             setIsSubmitting(false);
-            return; // Exit after successful patient record login
+            return; 
           } else {
             console.log('[LoginPage] PatientRecord found for email (ID:', docSnap.id,'), but initialPassword did not match.');
           }
         }
-        if (patientRecordFoundAndMatched) return; // Should have returned inside loop
+        if (patientRecordFoundAndMatched) return; 
         console.log('[LoginPage] PatientRecord(s) found for email, but initialPassword did not match for any.');
       } else {
         console.log('[LoginPage] No patient record found for email:', email, 'in patientRecords collection.');
       }
     } catch (error: any) {
       console.error("[LoginPage] Error during PatientRecord email/password login attempt:", error);
-      // Fall through to Firebase Auth login attempt, don't toast yet
     }
 
     // Attempt Firebase Email/Password login if PatientRecord login didn't succeed
@@ -116,7 +114,7 @@ export default function LoginPage() {
         throw new Error("User profile not found after Firebase login. Please contact support or try signing up again.");
       }
     } catch (error: any) {
-      console.error("[LoginPage] Firebase Email/Password login error:", error); // This is where auth/invalid-credential would be caught
+      console.error("[LoginPage] Firebase Email/Password login error:", error); 
       toast({
         title: "Login Failed",
         description: (error.code === 'auth/invalid-credential' || error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') 
@@ -134,14 +132,13 @@ export default function LoginPage() {
   }
 
   if (isAuthenticated && userProfile && !isSubmitting) {
-     // This state should ideally be brief as useEffect handles redirection
     return <div className="flex min-h-screen items-center justify-center"><p>Redirecting to your dashboard...</p></div>;
   }
 
   return (
     <Card className="w-full shadow-xl">
       <CardHeader>
-        <CardTitle className="text-2xl">Login to MediMind</CardTitle>
+        <CardTitle className="text-2xl">Login to SAAIP</CardTitle>
         <CardDescription>Enter your Email and Password.</CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -150,7 +147,7 @@ export default function LoginPage() {
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
-              type="email" // Keep as email type for standard Firebase login, PatientRecord logic will handle if it's an ID
+              type="email" 
               placeholder="your.email@example.com"
               required
               value={email}

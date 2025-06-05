@@ -74,8 +74,8 @@ export default function ChatPage() {
             chatId: `welcome_${Date.now()}_${Math.random()}`,
             patientAuthUid: userProfile.uid,
             senderId: "AI_ASSISTANT",
-            senderName: 'MediMind AI',
-            messageText: `Hello ${userProfile.firstName}! I'm your MediMind AI Assistant. How can I help you today? You can ask me about general health topics or help with scheduling.`,
+            senderName: 'SAAIP AI',
+            messageText: `Hello ${userProfile.firstName}! I'm your SAAIP AI Assistant. How can I help you today? You can ask me about general health topics or help with scheduling.`,
             sentAt: new Date().toISOString(),
             isUser: false,
           };
@@ -169,7 +169,6 @@ export default function ChatPage() {
       });
       console.log("[ChatPage] User message successfully saved to Firestore.");
 
-      // Call the Genkit flow for AI response
       console.log(`[ChatPage] Calling patientChatFlow with message: "${currentUserMessageText}" and patientAuthUid: "${userProfile.uid}"`);
       const aiFlowInput: PatientChatFlowInput = {
         userMessage: currentUserMessageText,
@@ -186,7 +185,7 @@ export default function ChatPage() {
       const aiMessageData: Omit<ChatMessage, 'chatId' | 'sentAt'> = {
         patientAuthUid: userProfile.uid,
         senderId: "AI_ASSISTANT",
-        senderName: 'MediMind AI',
+        senderName: 'SAAIP AI',
         messageText: aiResponseText,
         isUser: false,
       };
@@ -204,8 +203,6 @@ export default function ChatPage() {
         description: "Could not send message or get AI response: " + (error.message || "Unknown error"),
         variant: "destructive",
       });
-      // Do not restore input if user message was successfully saved but AI failed
-      // setInput(currentUserMessageText); 
     } finally {
       setIsLoadingResponse(false);
     }
@@ -294,7 +291,7 @@ export default function ChatPage() {
                     <AvatarFallback><Bot size={24} /></AvatarFallback>
                   </Avatar>
                   <div className="max-w-[70%] rounded-xl px-4 py-3 shadow bg-muted text-muted-foreground">
-                      <p className="text-sm animate-pulse">MediMind AI is typing...</p>
+                      <p className="text-sm animate-pulse">SAAIP AI is typing...</p>
                   </div>
               </div>
             )}

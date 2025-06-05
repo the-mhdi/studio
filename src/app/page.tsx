@@ -25,7 +25,7 @@ export default function HomePage() {
                 <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm0 16.75a.75.75 0 0 1-.75-.75V12.5a.75.75 0 0 1 1.5 0v5.5a.75.75 0 0 1-.75.75zm0-9a.75.75 0 0 1-.75-.75V8.5a.75.75 0 0 1 1.5 0v.5a.75.75 0 0 1-.75.75zM9.5 14.75a.75.75 0 0 1-.75-.75V10.5a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-.75.75zm5 0a.75.75 0 0 1-.75-.75V10.5a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-.75.75z"/>
                 <path d="M12 6.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z"/>
               </svg>
-            <h1 className="text-3xl font-bold">MediMind</h1>
+            <h1 className="text-3xl font-bold">SAAIP</h1>
           </div>
           <nav className="space-x-4">
             <Button variant="ghost" asChild className="text-primary-foreground hover:bg-primary/80 hover:text-primary-foreground">
@@ -40,7 +40,7 @@ export default function HomePage() {
 
       <main className="flex-grow container mx-auto px-4 py-12">
         <section className="text-center">
-          <h2 className="text-5xl font-bold text-primary mb-6">Welcome to MediMind</h2>
+          <h2 className="text-5xl font-bold text-primary mb-6">Welcome to SAAIP</h2>
           <p className="text-xl text-foreground/80 mb-8 max-w-3xl mx-auto">
             Your intelligent partner in healthcare. Connecting doctors and patients with cutting-edge AI for seamless management and personalized assistance.
           </p>
@@ -55,7 +55,7 @@ export default function HomePage() {
           <div className="relative w-full max-w-4xl mx-auto h-96 rounded-lg overflow-hidden shadow-xl">
             <Image 
               src="https://placehold.co/1200x600.png" 
-              alt="MediMind application showcase"
+              alt="SAAIP application showcase"
               layout="fill"
               objectFit="cover"
               data-ai-hint="healthcare technology"
@@ -101,7 +101,7 @@ export default function HomePage() {
               </CardHeader>
               <CardContent>
                 <CardDescription className="text-center">
-                  Leverage Gemini and OpenAI compliant AI for intelligent assistance, prompt engineering, and automated tasks.
+                  Leverage cutting-edge AI for intelligent assistance, prompt engineering, and automated tasks.
                 </CardDescription>
               </CardContent>
             </Card>
@@ -110,7 +110,7 @@ export default function HomePage() {
       </main>
 
       <footer className="bg-muted text-muted-foreground py-8 text-center">
-        <p>&copy; {new Date().getFullYear()} MediMind. All rights reserved.</p>
+        <p>&copy; {new Date().getFullYear()} SAAIP. All rights reserved.</p>
         <p className="text-sm">Innovating Health, Together.</p>
       </footer>
     </div>

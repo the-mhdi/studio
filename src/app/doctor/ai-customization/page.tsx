@@ -17,7 +17,7 @@ import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import type { AiInstruction } from '@/lib/types';
 
 interface StoredAiInstructions extends Omit<CustomizeAiAssistantInput, 'doctorId'> {
-  updatedAt?: any; // Firestore Timestamp
+  updatedAt?: any; 
 }
 
 export default function AiCustomizationPage() {
@@ -37,7 +37,7 @@ export default function AiCustomizationPage() {
           const instructionRef = doc(db, "aiInstructions", userProfile.uid);
           const docSnap = await getDoc(instructionRef);
           if (docSnap.exists()) {
-            const data = docSnap.data() as AiInstruction; // Assumes AiInstruction type matches structure
+            const data = docSnap.data() as AiInstruction; 
             setInstructionText(data.instructionText);
             setPromptText(data.promptText || '');
             setCurrentInstructions({
@@ -46,8 +46,7 @@ export default function AiCustomizationPage() {
               updatedAt: data.updatedAt,
             });
           } else {
-            // No instructions found, set default or leave blank
-             setCurrentInstructions(null); // Ensure it's reset if no data
+             setCurrentInstructions(null); 
           }
         } catch (error) {
           console.error("Error fetching AI instructions:", error);
@@ -69,17 +68,11 @@ export default function AiCustomizationPage() {
     setIsLoading(true);
 
     const inputData: CustomizeAiAssistantInput = {
-      doctorId: parseInt(userProfile.uid, 10), // Genkit flow expects number, Firebase UID is string. This needs alignment.
-                                                // For now, let's assume genkit flow will be updated or we use a placeholder number.
-                                                // Or we update the Genkit flow to accept string doctorId.
-                                                // For this example, I'll use a placeholder or adapt later.
-                                                // Let's use a placeholder for genkit for now if the flow requires number
-                                                // For Firestore, we use userProfile.uid (string)
+      doctorId: parseInt(userProfile.uid, 10), 
       instructionText,
       promptText,
     };
     
-    // For Firestore:
     const firestoreData: Omit<AiInstruction, 'instructionId' | 'createdAt' | 'updatedAt' | 'doctorId'> & {doctorId: string} = {
         doctorId: userProfile.uid,
         instructionText,
@@ -88,7 +81,6 @@ export default function AiCustomizationPage() {
 
 
     try {
-      // Call Genkit flow (optional, if still needed for processing beyond just saving)
       // const genkitResult = await customizeAiAssistant(inputData);
       // if (!genkitResult.success) {
       //   toast({ title: 'AI Processing Failed', description: genkitResult.message || 'Could not process AI customization via Genkit.', variant: 'destructive' });
@@ -96,11 +88,10 @@ export default function AiCustomizationPage() {
       //   return;
       // }
 
-      // Save to Firestore
       const instructionRef = doc(db, "aiInstructions", userProfile.uid);
       await setDoc(instructionRef, { 
         ...firestoreData, 
-        createdAt: currentInstructions?.updatedAt ? currentInstructions.updatedAt : serverTimestamp(), // Preserve original createdAt if exists
+        createdAt: currentInstructions?.updatedAt ? currentInstructions.updatedAt : serverTimestamp(), 
         updatedAt: serverTimestamp() 
       }, { merge: true });
 
@@ -109,7 +100,7 @@ export default function AiCustomizationPage() {
         title: 'AI Assistant Updated',
         description: 'AI assistant customization saved successfully to Firestore.',
       });
-       setCurrentInstructions({ instructionText, promptText, updatedAt: new Date() }); // Optimistic update for display
+       setCurrentInstructions({ instructionText, promptText, updatedAt: new Date() }); 
     } catch (error) {
       console.error('Error customizing AI assistant:', error);
       toast({
@@ -157,7 +148,7 @@ export default function AiCustomizationPage() {
               </Label>
               <Textarea
                 id="instructionText"
-                placeholder="e.g., You are a friendly assistant for patients of MediMind Clinic. You should provide general health information and appointment scheduling help. Always encourage users to consult their doctor for medical advice."
+                placeholder="e.g., You are a friendly assistant for patients of SAAIP Clinic. You should provide general health information and appointment scheduling help. Always encourage users to consult their doctor for medical advice."
                 value={instructionText}
                 onChange={(e) => setInstructionText(e.target.value)}
                 rows={8}
@@ -227,4 +218,3 @@ export default function AiCustomizationPage() {
     </div>
   );
 }
-
