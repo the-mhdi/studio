@@ -52,15 +52,6 @@ export default function HomePage() {
               <Link href="#features">Learn More</Link>
             </Button>
           </div>
-          <div className="relative w-full max-w-4xl mx-auto h-96 rounded-lg overflow-hidden shadow-xl">
-            <Image 
-              src="https://placehold.co/1200x600.png" 
-              alt="SAAIP application showcase"
-              layout="fill"
-              objectFit="cover"
-              data-ai-hint="healthcare technology"
-            />
-          </div>
         </section>
 
         <section id="features" className="py-16">
